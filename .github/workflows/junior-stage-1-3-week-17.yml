@@ -1,0 +1,34 @@
+name: API tests — Junior Stage 1-3 (week 17)
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Junior Stage 1-3 (week 17)"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: "Junior Stage 1-3 (week 17)/package-lock.json"
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx playwright test
+        env:
+          BASE_URL: https://restful-booker.herokuapp.com
+          AUTH_USERNAME: admin
+          AUTH_PASSWORD: password123
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: "Junior Stage 1-3 (week 17)/playwright-report/"
+          retention-days: 14

@@ -1,0 +1,51 @@
+AI-assisted workflow example
+============================
+
+Stage 3 evidence: a reusable AI prompt template and how it was used to generate test ideas.
+
+
+The prompt template
+-------------------
+
+Used to get new test-case ideas for a resource before writing them. The parts in the first line (API name, endpoints, existing tests) are changed for each new resource; the rest stays the same.
+
+    Context: I'm testing the Restful Booker API (POST/GET/PUT/DELETE /booking, POST /auth)
+    as a Junior QA learner. Existing tests cover: create+retrieve, update+verify,
+    delete+verify absence, missing auth, wrong Content-Type.
+
+    Instruction: suggest 5 additional test-case ideas for this resource that are
+    NOT already covered above, at a Junior difficulty level (no boundary-value
+    analysis, no bulk operations, no async flows).
+
+    Constraints: each idea must map to a real endpoint this API actually exposes.
+    Do not invent endpoints or fields that aren't in the Restful Booker docs.
+
+    Format: a numbered list, one line per idea, no code.
+
+Why it is built this way:
+- Context - tells the AI what already exists, so it does not repeat it.
+- Instruction - asks for a fixed number of ideas at the right level.
+- Constraints - stops the AI from inventing endpoints that do not exist.
+- Format - a short list is quick to review.
+
+
+What we did with the AI's answer
+--------------------------------
+
+1. "Test GET /booking/{id} with a non-numeric id"
+   Accepted. A real, cheap edge case. Not written as a test yet.
+
+2. "Test rate limiting with 429"
+   Rejected. Restful Booker has no documented rate limiting. Asserting a status for behaviour the API does not have would be guessing, not testing.
+
+3. "Test PATCH /booking/{id} for a partial update"
+   Accepted, changed, and implemented in tests/bookingEdgeCases.spec.ts. The AI's idea only said "test PATCH". We added a check that the fields NOT sent stayed the same, because that is what makes PATCH different from the existing PUT test.
+
+4. "Test booking creation with an XML body"
+   Rejected. Out of scope for Stage 1-3, which only uses JSON.
+
+
+Lesson
+------
+
+Every AI suggestion was read and checked against the real API documentation. It was kept only if it was both real and useful - nothing was copied in without review.

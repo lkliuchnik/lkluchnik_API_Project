@@ -1,0 +1,91 @@
+CI pipeline explained
+=====================
+
+Stage 1-2: how tests fit into CI, what starts a pipeline, how to read results, rerun jobs, find logs and artifacts, and how a build failure differs from a test failure.
+
+Workflow file: .github/workflows/junior-stage-1-3-week-17.yml
+It is in the repository root, because GitHub Actions ignores workflow files inside nested folders.
+
+
+How tests fit into CI
+---------------------
+
+Locally a person runs "npx playwright test" by hand, and only when they remember to. CI runs the same command automatically, on a clean machine, every time code is proposed or merged. This gives two things a local run cannot:
+
+- Nothing depends on one person's computer: no forgotten .env, no globally installed tools, no old node_modules. npm ci installs exactly what package-lock.json says.
+- Nothing is merged without a check: the pull request shows the test result before merging, and the run on main after merging confirms the merged code still works.
+
+
+What starts this pipeline
+-------------------------
+
+- pull_request to main - when a PR into main is opened, or a new commit is pushed to its branch.
+- push to main - when commits land on main, including the merge of a PR.
+- workflow_dispatch - started by hand: Actions tab -> this workflow -> "Run workflow".
+
+A push to some other branch without an open PR does NOT start it.
+
+
+Pipeline steps
+--------------
+
+1. actions/checkout - copies the repository to a fresh Ubuntu machine.
+2. actions/setup-node - installs Node.js 24 (LTS) and restores the npm cache.
+3. npm ci - clean install of dependencies from package-lock.json.
+4. npx tsc --noEmit - checks all TypeScript types without creating any files. This is the BUILD step.
+5. npx playwright test - runs the tests. GitHub sets CI=true automatically, so playwright.config.ts turns on 1 retry and the HTML report. This is the TEST step.
+6. actions/upload-artifact - saves the playwright-report folder as an artifact. Because of "if: always()" it runs even when step 4 or 5 failed, which is exactly when the report is needed most.
+
+
+Build failure vs test failure
+-----------------------------
+
+Build failure
+- Red step: npm ci or npx tsc --noEmit.
+- Meaning: the project could not even be prepared, so no test ran.
+- Typical cause: a mistake in the code or setup - a TypeScript type error, a typo, a broken package.json or lockfile.
+- Where to look: the log of the red step.
+
+Test failure
+- Red step: npx playwright test.
+- Meaning: the project was built and the tests ran, but at least one assertion did not hold.
+- Typical cause: a code change, OR the API behaving differently (outage, changed response).
+- Where to look: the log of the test step and the HTML report artifact.
+
+Because type checking is a separate step, you can see which kind of failure it is from the name of the red step, before opening any log.
+
+
+Reading the results of a run
+----------------------------
+
+1. In the repository open the Actions tab and choose the run (it is named after the commit or PR title).
+2. The run summary shows a green tick or red cross for each job; artifacts are listed at the bottom.
+3. Click the "test" job. Every step can be expanded; a failed step opens automatically.
+4. In the "npx playwright test" step every test has one line: "ok" or "x". For a failed test the log shows its title, file and line, the expect(...) that failed, and the Expected and Received values. This is how you find which assertion failed.
+5. The PR page shows the same result under "Checks". The "Details" link opens the log directly.
+
+
+Rerunning jobs
+--------------
+
+On a finished run click "Re-run jobs" (top right), then "Re-run all jobs" or "Re-run failed jobs". This helps when a failure looks temporary, for example Restful Booker timed out. If a rerun passes without any code change, the test was flaky, not broken - worth noting, not ignoring. "Run workflow" (workflow_dispatch) starts a completely new run without pushing anything.
+
+
+Artifacts - what they are and how to use them
+---------------------------------------------
+
+An artifact is a file or folder created during a run that GitHub keeps after the machine is deleted. Here it is "playwright-report", kept for 14 days.
+
+How to use it:
+1. Open the run summary and download playwright-report.zip from the Artifacts section.
+2. Unzip it.
+3. In the project folder run: npx playwright show-report <unzipped folder>
+   (Opening index.html straight from disk may not load all data.)
+
+The report shows every test with its steps, duration, retries, console.log output and the full error for any failure. This is easier than scrolling through the raw log.
+
+
+Tests that are expected to fail
+-------------------------------
+
+The two tests marked with test.fail() (see assertion-notes.txt) appear as "x" in the log but do NOT make the job red. Playwright counts them as passed because they failed as expected. The job turns red only if one of them suddenly passes, or if any normal test fails.

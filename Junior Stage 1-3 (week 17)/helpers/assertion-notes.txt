@@ -1,0 +1,63 @@
+Assertion choices and known deviations
+======================================
+
+Stage 2 evidence: why each kind of assertion was chosen, and where the real API differs from the task.
+
+
+Main rule
+---------
+
+Every assertion follows the exact wording of the Junior Stage 1-3 task. It is not changed to match what Restful Booker actually returns. When the real API behaves differently, the test still checks what the task says, the difference is explained in a comment next to the assertion, and it is listed below.
+
+So a failing assertion here can mean two things: "the code is broken" or "the API behaves differently than the task expects". Telling these apart is part of the exercise.
+
+
+Known deviations (these tests fail on purpose)
+----------------------------------------------
+
+1. bookingCrud.spec.ts - "POST /booking with valid data"
+   The task expects: 201 Created
+   Restful Booker returns: 200 OK
+
+2. bookingAuth.spec.ts - "PUT without a token"
+   The task expects: 401 Unauthorized
+   Restful Booker returns: 403 Forbidden
+
+Both tests start with test.fail(). This does not change the assertion: it still checks 201 and 401 exactly as the task says. It only changes how Playwright reports the result:
+
+- The test fails, as expected -> Playwright reports it as passed.
+- The test suddenly passes -> Playwright reports it as failed.
+
+The second case would mean Restful Booker changed its behaviour and this list is out of date. So the suite turns red exactly when this document needs to be reviewed.
+
+
+Other Playwright modifiers we considered
+----------------------------------------
+
+- test.skip() - not used. A skipped test does not run at all, so the real API behaviour would be hidden. We want these two tests to call the real API on every run.
+- test.fixme() - not used. It fits a different situation: a task that cannot be tried at all because the API has no matching endpoint. That does not happen in Stage 1-3.
+- test.only() - only for local debugging of one test. Never committed, because it silently turns off all other tests for everyone, including CI.
+
+
+Why each assertion was chosen
+-----------------------------
+
+- Status codes are checked with toBe (one exact value), not with ranges. The only exception is the wrong Content-Type test: the task asks to "observe behaviour" there, so it only checks that the server answered at all.
+
+- Body fields are compared with the payload the test itself sent (made by buildBooking()), never with a fixed hardcoded value. This proves the response really reflects the request.
+
+- Schema validation (zod: bookingSchema, createBookingResponseSchema in models/booking.model.ts) runs in the GET and PUT tests. Checking two or three fields by hand only proves those fields are right; the schema proves the whole response has the right shape and types.
+
+- Array.every() is used in bookingCollection.spec.ts. The list endpoint promises that every item has a numeric bookingid. Checking only body[0] cannot prove that for every item.
+
+- Optional chaining (?.) and explicit undefined checks are used where a value may really be missing: the first item of a possibly empty list (body?.[0] in bookingCollection.spec.ts) and nested fields (body?.bookingdates?.checkin in bookingEdgeCases.spec.ts). Without it the test would crash with a TypeError instead of giving a clear result.
+
+- Strict equality: toBe already compares strictly (Object.is). Explicit === is also written out in bookingCollection.spec.ts to show the Stage 2 strict-equality requirement literally. Loose == is never used.
+
+- toBeLessThan is used only for the response-time check in bookingEdgeCases.spec.ts. The limit (5 seconds) is deliberately generous: it is a sanity check, not a performance limit.
+
+
+Why tests create and delete their own data
+------------------------------------------
+
+Every CRUD and auth test creates its own booking (in beforeEach, or inside the test) and deletes it afterwards (in afterEach, or in a finally block). Because of this any test can run alone or in any order, without relying on data left by another test. This is the Stage 3 isolation requirement; bookingIsolation.spec.ts shows it on its own.

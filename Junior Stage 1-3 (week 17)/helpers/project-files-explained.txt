@@ -1,0 +1,91 @@
+Key project files explained
+===========================
+
+Stage 1 evidence: a short explanation of the main project files and why each one exists.
+
+
+Node.js and npm
+---------------
+
+Node.js is the program that runs JavaScript outside a browser. Playwright, TypeScript and all test files run on it.
+
+npm is the package manager that comes with Node.js. It downloads the libraries listed in package.json into the node_modules folder, saves the exact versions in package-lock.json, and runs project commands such as "npm test".
+
+npx runs a tool that is installed inside the project, for example "npx playwright test", without installing it globally.
+
+
+Test framework vs HTTP client
+-----------------------------
+
+These are two different jobs. In this project both come from the @playwright/test package.
+
+- The test framework (test runner) finds the test files, runs them, and decides pass or fail. It gives us test, test.describe, beforeEach, afterEach, fixtures, expect, retries and reports. Other examples: Jest, Mocha, Vitest.
+- The HTTP client only sends a request and returns the response. It knows nothing about tests or assertions. Here it is Playwright's "request" object (request.get, request.post and so on). Other examples: fetch, axios, supertest.
+
+Example: in "await request.get('/booking')" the HTTP client does the work. In "expect(response.status()).toBe(200)" the test framework does the work. Each one could be replaced without touching the other, for example Jest as the runner with axios as the client.
+
+
+Running tests from the terminal
+-------------------------------
+
+    npm test                                        whole suite (same as npx playwright test)
+    npx playwright test tests/bookingCrud.spec.ts   one file
+    npx playwright test -g "PATCH"                  only tests whose title contains "PATCH"
+    npm run test:report                             open the last HTML report
+
+
+package.json
+------------
+
+Describes the project: its name, version, dependencies and scripts.
+
+- Dependencies (devDependencies): @playwright/test, typescript, @types/node, zod, dotenv.
+- Scripts: "npm test" runs "playwright test", "npm run test:report" opens the last HTML report.
+
+npm install and npm ci read this file to know what to install. CI reads it to know which command runs the tests.
+
+
+tsconfig.json
+-------------
+
+Settings for the TypeScript compiler.
+
+- target ES2021 - which JavaScript features are available.
+- module commonjs - how files import each other, matching Node's default.
+- strict true - type mistakes (for example a string where a number is expected in a booking) are reported before any test runs.
+- include - only the project's own folders are checked (fixtures, helpers, models, test-data, tests), not node_modules.
+
+
+playwright.config.ts
+--------------------
+
+Settings for the test framework (separate from the TypeScript settings).
+
+- testDir ./tests - where Playwright looks for *.spec.ts files.
+- baseURL - the API address, https://restful-booker.herokuapp.com by default, can be changed with the BASE_URL variable. Thanks to it a test can write request.get('/booking') instead of the full URL.
+- reporter - in CI it produces an HTML report (saved as a pipeline artifact) plus a simple list in the log. Locally it only prints the list, which is faster.
+- retries - 1 in CI, 0 locally. CI calls a shared public API that sometimes has short network problems; locally we want to see every failure immediately.
+
+
+.env.example
+------------
+
+A template for the real .env file. The real .env is ignored by git and never committed, because that is where real credentials would go. The template lists the variables the project reads: BASE_URL, AUTH_USERNAME, AUTH_PASSWORD. A new person copies it to .env and fills in the values.
+
+
+.gitignore
+----------
+
+Keeps generated and local-only files out of git:
+
+- node_modules - reinstalled from package.json, never committed.
+- .env - could leak credentials.
+- test-results and playwright-report - created again on every run, they are output, not source code.
+
+
+How they work together
+----------------------
+
+1. npm ci reads package.json and installs exactly the versions saved in package-lock.json.
+2. playwright.config.ts first calls dotenv.config(), which loads .env into process.env, and then reads BASE_URL. In CI there is no .env file; the same variables come from the env section of the workflow. The code does not care where they came from.
+3. tsconfig.json controls how every .ts file (fixtures, helpers, models, test-data, tests) is type-checked.

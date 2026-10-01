@@ -1,0 +1,153 @@
+Test plan - Junior Stage 1-3 (Restful Booker)
+=============================================
+
+API under test: https://restful-booker.herokuapp.com
+
+Why this API was chosen, and its known quirks (create returns 200 instead of 201, a missing or bad token gives 403 instead of 401), are described in docs/session-log.md in the repository root.
+
+
+Project tree
+------------
+
+    API project/                              git repository root
+    |-- .github/
+    |   `-- workflows/
+    |       `-- junior-stage-1-3-week-17.yml  CI: npm ci -> tsc --noEmit -> playwright test -> upload report
+    |-- docs/
+    |   `-- session-log.md                    planning decisions between sessions
+    `-- Junior Stage 1-3 (week 17)/
+        |-- .env.example                      template for the git-ignored .env
+        |-- .gitignore
+        |-- .vscode/
+        |   `-- extensions.json               recommends the Playwright Test for VS Code extension
+        |-- package.json
+        |-- package-lock.json
+        |-- tsconfig.json
+        |-- playwright.config.ts              loads .env, then reads BASE_URL and CI
+        |-- doc/
+        |   `-- test-descriptions.md          personal notes in Ukrainian (not part of the evidence)
+        |-- fixtures/
+        |   `-- api.fixture.ts                adds an authToken fixture to Playwright's test
+        |-- helpers/
+        |   |-- bookingApi.ts                 request helpers: createBooking, getBooking, getBookingIds,
+        |   |                                 updateBooking, patchBooking, deleteBooking,
+        |   |                                 createAuthToken, withAuthRetry
+        |   |-- test-plan.txt                  this file
+        |   |-- assertion-notes.txt            Stage 2 - assertion choices and known deviations
+        |   |-- project-files-explained.txt    Stage 1 - Node/npm, framework vs client, key files
+        |   |-- http-methods-explained.txt     Stage 2 - HTTP methods, linked to the tests
+        |   |-- ci-explained.txt               Stage 1-2 - triggers, logs, reruns, artifacts, failure types
+        |   `-- ai-prompt-template.txt         Stage 3 - reusable AI prompt and how it was used
+        |-- models/
+        |   `-- booking.model.ts              zod schemas and TypeScript types for booking responses
+        |-- test-data/
+        |   |-- httpStatus.ts                 named status code constants
+        |   `-- bookingFactory.ts             buildBooking() - a new unique booking for each call
+        `-- tests/
+            |-- bookingSmoke.spec.ts          Stage 1 - first successful API call
+            |-- bookingCrud.spec.ts           Stage 2 - GET, POST, PUT, DELETE, wrong Content-Type
+            |-- bookingAuth.spec.ts           Stage 2 - write without / with a token
+            |-- bookingCollection.spec.ts     Stage 2 - Array.every(), empty-list safety, ===
+            |-- bookingEdgeCases.spec.ts      Stage 2 topics - token retry, PATCH, nested JSON,
+            |                                 special characters, response time
+            `-- bookingIsolation.spec.ts      Stage 3 - proves a test runs alone and in any order
+
+The CI workflow is in the repository root because GitHub Actions only reads workflows from there. Inside the workflow, working-directory points to "Junior Stage 1-3 (week 17)". Details are in ci-explained.txt.
+
+
+Why this structure (Stage 3 evidence)
+-------------------------------------
+
+fixtures/ is separate from helpers/
+A fixture (api.fixture.ts) plugs into Playwright's own "test" and is given to a test automatically. A helper (bookingApi.ts) is a normal function that a test calls on purpose. Keeping them apart makes it clear from the import line which one a test uses.
+
+models/ is separate from test-data/
+models/booking.model.ts describes what a booking looks like (types and the zod schema used to check real responses). test-data/bookingFactory.ts describes how to make one for a test. The schema must be importable on its own, so a test can check any response no matter how the request was built.
+
+Named status codes instead of plain numbers
+HttpStatus.NOT_FOUND tells the reader what is meant; a plain 404 requires them to know the code. It is a simple lookup table, not a big abstraction.
+
+One bookingApi.ts instead of a file per HTTP method
+All functions work with the same resource (booking) and share the same response parsing (readBody). Splitting them into get.ts, post.ts and so on would spread one topic over many files and make nothing easier to read.
+
+Configuration in .env instead of hardcoded values
+The same tests can run against another base URL or other credentials by changing only the environment, not the code.
+
+
+Stage 1 - first successful API call
+-----------------------------------
+
+Test: bookingSmoke.spec.ts, GET /booking (list of booking ids).
+- Checks the status is 200.
+- Checks the body is an array.
+- Prints the status and the first entries to the terminal - this is the "view the response" evidence.
+
+This one test proves that the project, dependencies and test runner work end to end.
+
+
+Stage 2 - required practice tests
+---------------------------------
+
+1. GET a resource
+   bookingCrud.spec.ts - GET /booking/{id} for a booking created by the test. Checks status, firstname, lastname, totalprice, and the whole body with the zod schema.
+   Result: 200, as expected.
+
+2. POST with valid data
+   bookingCrud.spec.ts - POST /booking. Checks status 201, that the response repeats the sent data, and that bookingid exists.
+   Result: Restful Booker returns 200, not 201. The test checks 201 exactly as the task says and is marked test.fail(). See assertion-notes.txt.
+
+3. PUT to update and check the change
+   bookingCrud.spec.ts - PUT /booking/{id} with a valid token, checks the PUT response with the zod schema, then a GET confirms the change.
+   Result: 200 on PUT, GET shows the new value.
+
+4. DELETE and check it is gone
+   bookingCrud.spec.ts - DELETE /booking/{id} with a valid token, then GET the same id expecting 404.
+   Result: 201 on DELETE (an API quirk), 404 on GET.
+
+5. Wrong Content-Type
+   bookingCrud.spec.ts - POST /booking with Content-Type text/plain. The task asks to observe, so status and body are printed, not asserted.
+   Result: 500 Internal Server Error (plain text).
+
+6. No Authorization
+   bookingAuth.spec.ts - PUT /booking/{id} without a token, checks 401.
+   Result: Restful Booker returns 403, not 401. Marked test.fail(). See assertion-notes.txt.
+
+Required techniques ("at least one test must"):
+- Array.every() - bookingCollection.spec.ts checks that every item in GET /booking has a numeric bookingid.
+- Missing or null fields - bookingCollection.spec.ts: a filter that matches nothing may return an empty list, so the first item is read as body?.[0] and checked only if it exists. Nested fields are handled the same way in bookingEdgeCases.spec.ts.
+- Strict equality (===) - written out in bookingCollection.spec.ts (status === HttpStatus.OK, typeof ... === 'number') and in bookingEdgeCases.spec.ts. Everywhere else toBe is used, which is also strict. Loose == is never used.
+
+Other Stage 2 topics - bookingEdgeCases.spec.ts
+(kept in a separate file, so the required tests above stay focused)
+- Expired token and retry - PUT with a token the server never issued gets 403. withAuthRetry() gets a new token and tries once more -> 200, and a GET confirms the change.
+- PATCH - only lastname is sent. GET shows lastname changed while firstname and totalprice stayed the same.
+- Nested JSON - body?.bookingdates?.checkin is checked for type and value; a nested field that does not exist gives undefined instead of an error.
+- Special characters and encoding - a name with Cyrillic letters, ', & and # comes back unchanged and is found again with ?firstname=encodeURIComponent(name).
+- Response time - GET /booking is timed with Date.now() and must be under 5 seconds. An observation, not a performance test.
+
+
+Stage 3 - structure, isolation, schema, helpers
+-----------------------------------------------
+
+- Files by concern: Smoke, Crud, Auth, Collection, EdgeCases, Isolation - all for the booking resource.
+- Setup and cleanup: bookingCrud, bookingAuth and bookingEdgeCases create a new booking in beforeEach and delete it in afterEach. bookingIsolation does the same inside the test. No test uses data left by another one.
+- Configuration: base URL and credentials come from .env (BASE_URL, AUTH_USERNAME, AUTH_PASSWORD), read in playwright.config.ts and helpers/bookingApi.ts. Nothing is hardcoded in test files.
+- Helpers: helpers/bookingApi.ts has createBooking, getBooking, getBookingIds, updateBooking, patchBooking, deleteBooking, createAuthToken and withAuthRetry. Tests call request.* directly only when they send a deliberately broken request (no token, wrong Content-Type), which the helpers are not meant to produce.
+- Schema validation in at least 2 tests: bookingSchema (zod, models/booking.model.ts) checks the GET and PUT responses in bookingCrud.spec.ts. The POST test also has a schema check, but it is not counted: that test is a test.fail() deviation and stops at the 201 check before reaching the schema line.
+- Isolation proof: bookingIsolation.spec.ts creates its own booking, checks it, deletes it and confirms it is gone. It gives the same result when run alone (npx playwright test bookingIsolation.spec.ts) or together with other tests in any order.
+- AI-assisted workflow: ai-prompt-template.txt - a reusable prompt for test ideas, and which ideas were accepted, rejected or changed.
+
+
+Evidence checklist
+------------------
+
+[x] Project tree (above)
+[x] Passing run with the Stage 1 smoke test (local run: 16 passed)
+[x] 5-8 Stage 2 tests, passing or with documented, understood failures
+[x] Explanation of assertion choices and HTTP methods (assertion-notes.txt, http-methods-explained.txt)
+[x] Explanation of key project files (project-files-explained.txt)
+[x] Organized tree, isolation test, schema validation (GET, PUT), helper functions (Stage 3)
+[x] Explanation of project structure decisions ("Why this structure" above)
+[x] Reusable AI prompt with an example of use (ai-prompt-template.txt)
+[ ] Green CI run on GitHub Actions (after push, PR and merge)
+[ ] Failed CI run reviewed: failing test and assertion found in the log

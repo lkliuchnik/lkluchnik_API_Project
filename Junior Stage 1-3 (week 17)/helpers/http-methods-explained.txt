@@ -1,0 +1,70 @@
+HTTP method semantics demonstrated
+==================================
+
+Stage 2 evidence: what each HTTP method means, and which test shows it.
+
+
+GET - read, no side effects
+---------------------------
+
+Reads data and changes nothing on the server. It is safe to call many times: two calls return the same result, unless someone else changed the data in between.
+
+Where it is used:
+- bookingSmoke.spec.ts - GET /booking, the list of all booking ids.
+- bookingCrud.spec.ts - GET /booking/{id}, one booking's details. It is a test on its own and is also used to check the result of POST, PUT and DELETE.
+- bookingCollection.spec.ts - GET /booking with a query filter.
+
+
+POST - create something new
+---------------------------
+
+Sends data so the server creates a new resource. The server chooses the new id (here bookingid). It is not idempotent: sending the same POST twice creates two different bookings.
+
+Where it is used:
+- bookingCrud.spec.ts - POST /booking creates a booking and gets its new bookingid back. Most other tests also use it in beforeEach, because they need an existing booking to work with.
+- POST /auth - called by the authToken fixture (fixtures/api.fixture.ts) for every test that needs a token. It is a different kind of "create": it creates a session token, not a booking.
+
+
+PUT - replace the whole resource
+--------------------------------
+
+Replaces the whole resource with what was sent. It is idempotent: sending the same PUT twice gives the same final state. This suite always sends a complete booking with PUT.
+
+Where it is used:
+- bookingCrud.spec.ts - PUT /booking/{id} updates a booking; a GET afterwards confirms the change.
+- bookingAuth.spec.ts - the same call, used to test the authorization check (with and without a token).
+- bookingEdgeCases.spec.ts - PUT with an expired token is rejected with 403, then repeated once with a fresh token using withAuthRetry().
+
+
+PATCH - change only some fields
+-------------------------------
+
+Changes only the fields that were sent; all other fields keep their values. This is the practical difference from PUT, which replaces everything.
+
+Where it is used:
+- bookingEdgeCases.spec.ts - PATCH /booking/{id} sends only lastname. The GET afterwards checks that lastname changed AND that firstname and totalprice did not. The second check is what proves "partial update"; without it the test would show nothing more than the PUT test.
+
+
+DELETE - remove a resource
+--------------------------
+
+Removes the resource, so the server no longer has it. In intent it is idempotent: deleting something already deleted still means "it is gone". What Restful Booker returns for a second DELETE of the same id is not checked here.
+
+Where it is used:
+- bookingCrud.spec.ts - DELETE /booking/{id}, then GET /booking/{id} expecting 404. This proves the booking is really gone, not only that the DELETE call returned something.
+- bookingIsolation.spec.ts - the same delete-then-check pattern, as part of proving a test cleans up after itself.
+
+
+Status code groups seen in this suite
+-------------------------------------
+
+2xx - success
+- 200: GET, PUT, PATCH, successful login, and POST /booking (the task expects 201 there).
+- 201: what Restful Booker returns for DELETE. Unusual, but real, and worth noticing.
+
+4xx - client error (the request was wrong)
+- 404: GET after delete.
+- 403: write without a token, or with an expired one. The task expects 401; see assertion-notes.txt.
+
+5xx - server error (the server failed)
+- 500: returned when POST /booking is sent with a wrong Content-Type. Observed and logged, not asserted.
