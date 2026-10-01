@@ -37,7 +37,9 @@ Project tree
         |   |-- project-files-explained.txt    Stage 1 - Node/npm, framework vs client, key files
         |   |-- http-methods-explained.txt     Stage 2 - HTTP methods, linked to the tests
         |   |-- ci-explained.txt               Stage 1-2 - triggers, logs, reruns, artifacts, failure types
-        |   `-- ai-prompt-template.txt         Stage 3 - reusable AI prompt and how it was used
+        |   |-- ai-prompt-template.txt         Stage 3 - reusable AI prompt and how it was used
+        |   `-- screenshots/
+        |       `-- ci-green-run.png           evidence - first green GitHub Actions run
         |-- models/
         |   `-- booking.model.ts              zod schemas and TypeScript types for booking responses
         |-- test-data/
@@ -149,5 +151,5 @@ Evidence checklist
 [x] Organized tree, isolation test, schema validation (GET, PUT), helper functions (Stage 3)
 [x] Explanation of project structure decisions ("Why this structure" above)
 [x] Reusable AI prompt with an example of use (ai-prompt-template.txt)
-[ ] Green CI run on GitHub Actions (after push, PR and merge)
+[x] Green CI run on GitHub Actions - run #1, commit 84e7a9a (see "Evidence: first green run" in ci-explained.txt, screenshot in helpers/screenshots/ci-green-run.png)
 [ ] Failed CI run reviewed: failing test and assertion found in the log

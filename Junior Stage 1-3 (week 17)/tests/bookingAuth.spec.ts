@@ -22,7 +22,9 @@ test.describe('Booking auth', () => {
     // long as it fails for this reason, and flags it red if it ever starts
     // passing — which would mean Restful Booker changed and this documented
     // deviation (see helpers/assertion-notes.txt) is stale and needs review.
-    test.fail();
+    // TEMPORARILY DISABLED to produce a red CI run for the Stage 2 "review a
+    // failed pipeline run" task. Restore this line right after that run.
+    // test.fail();
 
     const response = await request.put(`/booking/${bookingId}`, {
       data: buildBooking(),
