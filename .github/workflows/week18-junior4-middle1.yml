@@ -1,0 +1,40 @@
+name: API tests — Week 18 (Junior Stage 4, Middle Stage 1)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Week18. Junior Stage 4. Middle Stage 1/**"
+      - ".github/workflows/week18-junior4-middle1.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Week18. Junior Stage 4. Middle Stage 1/**"
+      - ".github/workflows/week18-junior4-middle1.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Week18. Junior Stage 4. Middle Stage 1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: "Week18. Junior Stage 4. Middle Stage 1/package-lock.json"
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx playwright test
+        env:
+          BASE_URL: https://dummyjson.com
+          AUTH_USERNAME: emilys
+          AUTH_PASSWORD: emilyspass
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-week18
+          path: "Week18. Junior Stage 4. Middle Stage 1/playwright-report/"
+          retention-days: 14

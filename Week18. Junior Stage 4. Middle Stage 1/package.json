@@ -1,0 +1,19 @@
+{
+  "name": "week18-junior-stage-4-middle-stage-1",
+  "version": "1.0.0",
+  "description": "Junior API track Stage 4 and Middle Stage 1 practice project against DummyJSON",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:report": "playwright show-report"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.20.3",
+    "dotenv": "^18.0.3",
+    "typescript": "^7.0.2",
+    "zod": "^4.6.5"
+  }
+}

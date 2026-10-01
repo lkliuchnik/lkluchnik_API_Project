@@ -1,0 +1,126 @@
+Test plan - Week 18: Junior Stage 4 (DummyJSON)
+===============================================
+
+API under test: https://dummyjson.com
+Why this API was chosen and how it behaves: docs/session-log.md in the
+repository root.
+
+
+In short
+--------
+
+- 20 tests in 6 files, all green locally.
+- 5 of them are marked test.fail(): DummyJSON does not do what the task
+  expects. See assertion-notes.txt.
+- This code is the "before" state for Middle Stage 1 (refactoring).
+  Middle Stage 1 will be added to this file later.
+
+
+Project tree
+------------
+
+    Week18. Junior Stage 4. Middle Stage 1/
+    |-- .env.example                 settings template (the real .env is not in git)
+    |-- .gitignore
+    |-- .vscode/extensions.json      recommends the Playwright extension
+    |-- package.json
+    |-- package-lock.json
+    |-- tsconfig.json
+    |-- playwright.config.ts         API address and settings
+    |-- fixtures/
+    |   `-- api.fixture.ts           logs in and gives tests a token
+    |-- helpers/
+    |   |-- dummyApi.ts              functions that send the requests
+    |   |-- test-plan.txt            this file
+    |   |-- assertion-notes.txt      what is checked, and the known deviations
+    |   `-- chaining-explained.txt   how tests pass data between requests
+    |-- test-data/
+    |   |-- httpStatus.ts            status codes with names
+    |   |-- productFactory.ts        makes new product data
+    |   `-- userFactory.ts           makes new user data
+    `-- tests/
+        |-- smoke.spec.ts            the project works - GET /test
+        |-- productCrud.spec.ts      create, read, update, delete
+        |-- auth.spec.ts             access control and login errors
+        |-- pagination.spec.ts       pages of products
+        |-- userData.spec.ts         saved changes and duplicates
+        `-- carts.spec.ts            chained requests and cart totals
+
+CI: .github/workflows/week18-junior4-middle1.yml
+It runs only when something in this folder changes.
+
+
+The five practice tasks
+-----------------------
+
+1. A complete CRUD flow for one resource
+   File:    productCrud.spec.ts
+   Test:    "full CRUD flow: create, read, update, delete, verify absence"
+            create -> read -> update -> delete -> check it is gone (404)
+   Result:  test.fail() - the new product is not saved (deviation 1).
+   Extra:   "each CRUD step on an existing product returns the expected data"
+            read -> update -> delete on product 1. Passes.
+            Shows what the API really answers at each step.
+
+2. Unauthorized access is rejected
+   File:    auth.spec.ts
+   - no token                   -> 401 + message, no data      passes
+   - random text as token       -> 401 + message               passes
+   - valid token                -> 200 + products              passes
+   - real token, forged ending  -> 500 instead of 401          test.fail() (deviation 4)
+
+3. Pagination: number of pages, items per page
+   File:    pagination.spec.ts
+   - page 3, 10 per page: limit, skip, 10 items, number of pages   passes
+   - the last page has only the items that are left                passes
+   - page 1 and page 2 have no product in common                   passes
+   Note:    DummyJSON has no "page" field. We work it out:
+            page = skip / limit + 1
+            number of pages = total / limit, rounded up
+
+4. Create, change, and check the change is saved
+   File:    userData.spec.ts
+   Test:    "create a user, change it, and the change persists"
+   Result:  test.fail() - the new user is not saved (deviation 2).
+
+5. Duplicates are rejected
+   File:    userData.spec.ts
+   Test:    "creating a user with an existing username and email fails"
+            The username and email come from a real user (GET /users/1).
+            We expect 409.
+   Result:  test.fail() - the API creates the duplicate (deviation 3).
+
+
+What the task wants to see
+--------------------------
+
+Requests chained with data from earlier answers
+   carts.spec.ts, productCrud.spec.ts, userData.spec.ts, pagination.spec.ts.
+   All six chains are explained in chaining-explained.txt.
+
+Business results, not just "200 OK"
+   Cart totals, carts belong to me, catalog prices, partial update, delete
+   details, page rules, clear error messages.
+   See assertion-notes.txt, part "Business rules".
+
+Tests check what the system really does
+   The 5 test.fail() tests show real differences instead of hiding them.
+
+
+Optional topics
+---------------
+
+User A and user B    auth.spec.ts - test.fail(), A can read B's carts (deviation 5)
+Validation errors    auth.spec.ts - wrong password, missing password (400 + message)
+                     carts.spec.ts - cart for a user that does not exist (404 + message)
+Response time        pagination.spec.ts - under 3000 ms
+
+
+Evidence checklist
+------------------
+
+[x] Complete CRUD test flow                   productCrud.spec.ts
+[x] Auth / access control test                auth.spec.ts
+[x] Pagination test                           pagination.spec.ts
+[x] How tests chain data between requests     chaining-explained.txt
+[ ] Green CI run of this folder               after commit and push
