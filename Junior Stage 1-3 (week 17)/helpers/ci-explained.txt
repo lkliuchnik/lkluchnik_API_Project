@@ -94,7 +94,10 @@ The two tests marked with test.fail() (see assertion-notes.txt) appear as "x" in
 Evidence: first green run
 -------------------------
 
-Screenshot: helpers/screenshots/ci-green-run.png
+Screenshots:
+- helpers/screenshots/ci-green-run.png - the run list in the Actions tab
+- helpers/screenshots/ci-green-run-report-1.png and ci-green-run-report-2.png - the HTML report from the artifact of this run (top and bottom of the page)
+- helpers/screenshots/ci-green-run-smoke-test.png - the Stage 1 smoke test opened in that report, with the API response
 Link: https://github.com/lkliuchnik/lkluchnik_API_Project/actions
 
 - Workflow: API tests - Junior Stage 1-3 (week 17)
@@ -108,3 +111,64 @@ What this run shows:
 - The workflow file is found in the repository root and starts on its own after a push to main.
 - npm ci, the type check (tsc --noEmit) and all tests pass on a clean GitHub machine, not only on the local computer.
 - The two test.fail() tests did not make the run red, because they failed in the expected way.
+
+What the HTML report of this run shows
+The artifact "playwright-report" was downloaded from run #1, unzipped and opened. The report was created on 10/1/2026 at 12:22 (total test time 3.1 s) and shows "All 16, Passed 16, Failed 0, Flaky 0, Skipped 0".
+- Every test in all six files is green: bookingAuth, bookingCollection, bookingCrud, bookingEdgeCases, bookingIsolation, bookingSmoke.
+- The Stage 1 smoke test "GET /booking returns a list of booking ids" (bookingSmoke.spec.ts) passed - this is the passing API call in CI.
+  When the test is opened in the report (ci-green-run-smoke-test.png), it shows:
+  - Test Steps: GET /booking (127 ms), then the two Expect "toBe" checks (status 200, body is an array) - all green.
+  - Attachments -> stdout: the response printed by the test - "Status: 200" and the first entries of the list ({"bookingid": 1}, {"bookingid": 2}, {"bookingid": 3}).
+- The two deviation tests (bookingAuth.spec.ts:18 and bookingCrud.spec.ts:68) are shown as passed, because they are marked test.fail() and failed as expected.
+- "Flaky 0" means no test needed a retry.
+The report shows the long test titles used at that time; they were shortened later during the code review.
+
+
+Evidence: failed run and how it was analysed
+--------------------------------------------
+
+Screenshots: helpers/screenshots/ci-red-run.png (run list), helpers/screenshots/ci-red-run-report.png (HTML report from the artifact)
+Link: https://github.com/lkliuchnik/lkluchnik_API_Project/actions
+
+- Run: #2, "Week 17_Junior Stage 1,2,3 - Red run"
+- Commit: 1974447, pushed by lkliuchnik on 2026-10-01
+- Branch: main, trigger: push to main
+- Result: red (failure), total time 13 seconds
+
+How the red run was made
+On purpose. In tests/bookingAuth.spec.ts the line test.fail() was commented out in the test "PUT /booking/{id} without a token". That test checks for 401, as the task says, but Restful Booker returns 403. With test.fail() Playwright counts this as an expected failure; without it, it is a normal failed test, so the job turns red.
+
+Step 1 - which step is red?
+The job "test" failed in the step "npx playwright test". The steps before it - npm ci and npx tsc --noEmit - are green. So this is a TEST failure, not a build failure: the project was installed and type-checked, the tests ran, and an assertion did not hold.
+
+Step 2 - which test failed?
+At the end of the step log Playwright prints a summary:
+
+    1 failed
+      tests/bookingAuth.spec.ts:18:7 > Booking auth > PUT /booking/{id} without a token ...
+    15 passed
+
+So exactly one test out of 16 failed; all others passed.
+(After this run the test titles were shortened during a code review; this test is now called "PUT /booking/{id} without a token returns 401". The log above shows the title as it was in run #2.)
+
+Step 3 - which assertion failed and why?
+Above the summary the log shows the error for that test:
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 401
+    Received: 403
+        at tests/bookingAuth.spec.ts:35:31
+
+Line 35 is expect(response.status()).toBe(HttpStatus.UNAUTHORIZED). The test expected 401 Unauthorized, the server answered 403 Forbidden. The request itself worked - the server answered and really did block the write without a token - only the status code differs from the task. This is the known deviation listed in assertion-notes.txt, not a bug in the code and not an API outage.
+
+Step 4 - was it a random (flaky) failure?
+No. The log also shows "Retry #1" with the same error. In CI Playwright retries a failed test once (retries: 1 in playwright.config.ts). It failed the same way twice, so the failure is stable. A flaky failure would usually pass on the retry.
+
+Step 5 - more detail in the artifact
+The HTML report (artifact "playwright-report") was uploaded even though the job failed, thanks to "if: always()". It was downloaded from run #2, unzipped and opened (index.html, or npx playwright show-report <folder>). The report confirms the same result as the log: the test bookingAuth.spec.ts:18 failed with Expected: 401, Received: 403. It also lists the POST test, which failed as expected because of test.fail() and so did not make the run red.
+Screenshot of the report overview: helpers/screenshots/ci-red-run-report.png
+It shows the summary "All 16, Passed 15, Failed 1, Flaky 0, Skipped 0" (run on 10/1/2026 at 12:51) and the only red test: bookingAuth.spec.ts:18, "PUT /booking/{id} without a token". The POST test (bookingCrud.spec.ts:68) is shown as passed - it is the test.fail() test that failed as expected. "Flaky 0" confirms the failed test also failed on its retry. Clicking the red test opens its details with Expected: 401, Received: 403.
+
+Conclusion and fix
+The pipeline correctly turned red because a real assertion failed. Nothing is wrong with the API or the code; the expectation comes from the task text. The fix is to put test.fail() back, so the documented deviation is again reported as "expected to fail", and the next run on main is green again.

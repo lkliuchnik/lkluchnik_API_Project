@@ -5,8 +5,7 @@ type Fixtures = {
   authToken: string;
 };
 
-// Extends Playwright's base test with a ready-to-use auth token, obtained
-// dynamically per test instead of hardcoding one.
+// Gives every test a fresh auth token (no hardcoded token).
 export const test = base.extend<Fixtures>({
   authToken: async ({ request }, use) => {
     const token = await createAuthToken(request);

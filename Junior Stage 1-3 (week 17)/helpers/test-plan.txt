@@ -31,7 +31,7 @@ Project tree
         |-- helpers/
         |   |-- bookingApi.ts                 request helpers: createBooking, getBooking, getBookingIds,
         |   |                                 updateBooking, patchBooking, deleteBooking,
-        |   |                                 createAuthToken, withAuthRetry
+        |   |                                 createAuthToken, updateBookingWithRetry
         |   |-- test-plan.txt                  this file
         |   |-- assertion-notes.txt            Stage 2 - assertion choices and known deviations
         |   |-- project-files-explained.txt    Stage 1 - Node/npm, framework vs client, key files
@@ -39,7 +39,12 @@ Project tree
         |   |-- ci-explained.txt               Stage 1-2 - triggers, logs, reruns, artifacts, failure types
         |   |-- ai-prompt-template.txt         Stage 3 - reusable AI prompt and how it was used
         |   `-- screenshots/
-        |       `-- ci-green-run.png           evidence - first green GitHub Actions run
+        |       |-- ci-green-run.png           evidence - first green GitHub Actions run
+        |       |-- ci-green-run-report-1.png  evidence - HTML report of the green run (top)
+        |       |-- ci-green-run-report-2.png  evidence - HTML report of the green run (bottom)
+        |       |-- ci-green-run-smoke-test.png evidence - smoke test in CI with Status: 200 and the response
+        |       |-- ci-red-run.png             evidence - failed run used for log analysis
+        |       `-- ci-red-run-report.png      evidence - HTML report artifact of the failed run
         |-- models/
         |   `-- booking.model.ts              zod schemas and TypeScript types for booking responses
         |-- test-data/
@@ -116,12 +121,12 @@ Stage 2 - required practice tests
 
 Required techniques ("at least one test must"):
 - Array.every() - bookingCollection.spec.ts checks that every item in GET /booking has a numeric bookingid.
-- Missing or null fields - bookingCollection.spec.ts: a filter that matches nothing may return an empty list, so the first item is read as body?.[0] and checked only if it exists. Nested fields are handled the same way in bookingEdgeCases.spec.ts.
-- Strict equality (===) - written out in bookingCollection.spec.ts (status === HttpStatus.OK, typeof ... === 'number') and in bookingEdgeCases.spec.ts. Everywhere else toBe is used, which is also strict. Loose == is never used.
+- Missing or null fields - bookingCollection.spec.ts: a filter that matches nothing returns an empty list; the test checks that and reads body[0]?.bookingid, which gives undefined instead of crashing. Nested fields are handled the same way in bookingEdgeCases.spec.ts.
+- Strict equality (===) - used inside the Array.every() and Array.some() callbacks (typeof entry?.bookingid === 'number', entry.bookingid === createdId). All assertions use toBe, which is also strict. Loose == is never used.
 
 Other Stage 2 topics - bookingEdgeCases.spec.ts
 (kept in a separate file, so the required tests above stay focused)
-- Expired token and retry - PUT with a token the server never issued gets 403. withAuthRetry() gets a new token and tries once more -> 200, and a GET confirms the change.
+- Expired token and retry - PUT with a token the server never issued gets 403. updateBookingWithRetry() gets a new token and tries once more -> 200, and a GET confirms the change.
 - PATCH - only lastname is sent. GET shows lastname changed while firstname and totalprice stayed the same.
 - Nested JSON - body?.bookingdates?.checkin is checked for type and value; a nested field that does not exist gives undefined instead of an error.
 - Special characters and encoding - a name with Cyrillic letters, ', & and # comes back unchanged and is found again with ?firstname=encodeURIComponent(name).
@@ -134,7 +139,7 @@ Stage 3 - structure, isolation, schema, helpers
 - Files by concern: Smoke, Crud, Auth, Collection, EdgeCases, Isolation - all for the booking resource.
 - Setup and cleanup: bookingCrud, bookingAuth and bookingEdgeCases create a new booking in beforeEach and delete it in afterEach. bookingIsolation does the same inside the test. No test uses data left by another one.
 - Configuration: base URL and credentials come from .env (BASE_URL, AUTH_USERNAME, AUTH_PASSWORD), read in playwright.config.ts and helpers/bookingApi.ts. Nothing is hardcoded in test files.
-- Helpers: helpers/bookingApi.ts has createBooking, getBooking, getBookingIds, updateBooking, patchBooking, deleteBooking, createAuthToken and withAuthRetry. Tests call request.* directly only when they send a deliberately broken request (no token, wrong Content-Type), which the helpers are not meant to produce.
+- Helpers: helpers/bookingApi.ts has createBooking, getBooking, getBookingIds, updateBooking, patchBooking, deleteBooking, createAuthToken and updateBookingWithRetry. Tests call request.* directly only when they send a deliberately broken request (no token, wrong Content-Type), which the helpers are not meant to produce.
 - Schema validation in at least 2 tests: bookingSchema (zod, models/booking.model.ts) checks the GET and PUT responses in bookingCrud.spec.ts. The POST test also has a schema check, but it is not counted: that test is a test.fail() deviation and stops at the 201 check before reaching the schema line.
 - Isolation proof: bookingIsolation.spec.ts creates its own booking, checks it, deletes it and confirms it is gone. It gives the same result when run alone (npx playwright test bookingIsolation.spec.ts) or together with other tests in any order.
 - AI-assisted workflow: ai-prompt-template.txt - a reusable prompt for test ideas, and which ideas were accepted, rejected or changed.
@@ -144,12 +149,12 @@ Evidence checklist
 ------------------
 
 [x] Project tree (above)
-[x] Passing run with the Stage 1 smoke test (local run: 16 passed)
+[x] Passing run with the Stage 1 smoke test - local run and CI run #1 (screenshot helpers/screenshots/ci-green-run-smoke-test.png: Status: 200 and the response body)
 [x] 5-8 Stage 2 tests, passing or with documented, understood failures
 [x] Explanation of assertion choices and HTTP methods (assertion-notes.txt, http-methods-explained.txt)
 [x] Explanation of key project files (project-files-explained.txt)
 [x] Organized tree, isolation test, schema validation (GET, PUT), helper functions (Stage 3)
 [x] Explanation of project structure decisions ("Why this structure" above)
 [x] Reusable AI prompt with an example of use (ai-prompt-template.txt)
-[x] Green CI run on GitHub Actions - run #1, commit 84e7a9a (see "Evidence: first green run" in ci-explained.txt, screenshot in helpers/screenshots/ci-green-run.png)
-[ ] Failed CI run reviewed: failing test and assertion found in the log
+[x] Green CI run on GitHub Actions - run #1, commit 84e7a9a (see "Evidence: first green run" in ci-explained.txt, screenshots in helpers/screenshots/ci-green-run.png, ci-green-run-report-1.png and ci-green-run-report-2.png)
+[x] Failed CI run reviewed - run #2, commit 1974447: failing test and assertion found in the log (see "Evidence: failed run and how it was analysed" in ci-explained.txt, screenshots in helpers/screenshots/ci-red-run.png and ci-red-run-report.png)

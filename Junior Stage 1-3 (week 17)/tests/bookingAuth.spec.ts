@@ -15,28 +15,17 @@ test.describe('Booking auth', () => {
     await deleteBooking(request, bookingId, authToken);
   });
 
-  test('PUT /booking/{id} without a token — task expects 401; Restful Booker actually returns 403 (documented deviation, see helpers/assertion-notes.txt)', async ({
-    request,
-  }) => {
-    // Marks this test as expected to fail: Playwright reports it green as
-    // long as it fails for this reason, and flags it red if it ever starts
-    // passing — which would mean Restful Booker changed and this documented
-    // deviation (see helpers/assertion-notes.txt) is stale and needs review.
-    // TEMPORARILY DISABLED to produce a red CI run for the Stage 2 "review a
-    // failed pipeline run" task. Restore this line right after that run.
-    // test.fail();
+  test('PUT /booking/{id} without a token returns 401', async ({ request }) => {
+    test.fail(); // known deviation: the API returns 403, see assertion-notes.txt
 
-    const response = await request.put(`/booking/${bookingId}`, {
-      data: buildBooking(),
-    });
+    const response = await request.put(`/booking/${bookingId}`, { data: buildBooking() });
 
-    // Written exactly as Stage 2 specifies ("assert 401"). This is expected to
-    // fail — Restful Booker rejects unauthenticated writes with 403, not 401.
     expect(response.status()).toBe(HttpStatus.UNAUTHORIZED);
   });
 
-  test('PUT /booking/{id} with a valid token succeeds', async ({ request, authToken }) => {
+  test('PUT /booking/{id} with a valid token returns 200', async ({ request, authToken }) => {
     const result = await updateBooking(request, bookingId, buildBooking(), authToken);
+
     expect(result.status).toBe(HttpStatus.OK);
   });
 });

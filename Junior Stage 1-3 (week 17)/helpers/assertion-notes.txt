@@ -46,13 +46,13 @@ Why each assertion was chosen
 
 - Body fields are compared with the payload the test itself sent (made by buildBooking()), never with a fixed hardcoded value. This proves the response really reflects the request.
 
-- Schema validation (zod: bookingSchema, createBookingResponseSchema in models/booking.model.ts) runs in the GET and PUT tests. Checking two or three fields by hand only proves those fields are right; the schema proves the whole response has the right shape and types.
+- Schema validation (zod: bookingSchema, createBookingResponseSchema in models/booking.model.ts) runs in the GET and PUT tests, written as expect(() => bookingSchema.parse(body)).not.toThrow(). parse() throws an error that lists the wrong fields, so a failure shows exactly what is wrong. Checking two or three fields by hand only proves those fields are right; the schema proves the whole response has the right shape and types.
 
 - Array.every() is used in bookingCollection.spec.ts. The list endpoint promises that every item has a numeric bookingid. Checking only body[0] cannot prove that for every item.
 
-- Optional chaining (?.) and explicit undefined checks are used where a value may really be missing: the first item of a possibly empty list (body?.[0] in bookingCollection.spec.ts) and nested fields (body?.bookingdates?.checkin in bookingEdgeCases.spec.ts). Without it the test would crash with a TypeError instead of giving a clear result.
+- Optional chaining (?.) is used where a value may really be missing: the first item of an empty list (body[0]?.bookingid in bookingCollection.spec.ts) and a nested field that does not exist (body?.bookingdates?.extra?.value in bookingEdgeCases.spec.ts). Without ?. the test would crash with a TypeError; with it we get undefined and can check it with toBeUndefined().
 
-- Strict equality: toBe already compares strictly (Object.is). Explicit === is also written out in bookingCollection.spec.ts to show the Stage 2 strict-equality requirement literally. Loose == is never used.
+- Strict equality: toBe already compares strictly (Object.is), and it shows Expected and Received values when it fails. Explicit === is used inside the Array.every() and Array.some() callbacks (typeof entry?.bookingid === 'number', entry.bookingid === createdId). We avoid expect(a === b).toBe(true), because when it fails it only says "expected true, received false". Loose == is never used.
 
 - toBeLessThan is used only for the response-time check in bookingEdgeCases.spec.ts. The limit (5 seconds) is deliberately generous: it is a sanity check, not a performance limit.
 
@@ -61,3 +61,36 @@ Why tests create and delete their own data
 ------------------------------------------
 
 Every CRUD and auth test creates its own booking (in beforeEach, or inside the test) and deletes it afterwards (in afterEach, or in a finally block). Because of this any test can run alone or in any order, without relying on data left by another test. This is the Stage 3 isolation requirement; bookingIsolation.spec.ts shows it on its own.
+
+
+Notes on the test code
+----------------------
+
+The test files keep only one-line comments. The longer explanations are here.
+
+test.fail() in the two deviation tests
+The line test.fail() at the start of the test means "this test is expected to fail". See "Known deviations" above for why, and what happens if the API changes.
+
+DELETE returns 201 (bookingCrud.spec.ts)
+Restful Booker answers a successful DELETE with 201 Created. 200 or 204 would be more usual. The test checks 201, because that is what this API really does, and then checks with a GET that the booking is gone (404).
+
+Cleaning up in "Booking creation" (bookingCrud.spec.ts)
+These tests create a booking inside the test, so beforeEach cannot create it for them. Each test saves the new id in createdId, and afterEach deletes it. This also works for the POST test that fails on purpose: the id is saved before the failing assertion, so afterEach still deletes the booking.
+
+Wrong Content-Type (bookingCrud.spec.ts)
+The task says "observe the behaviour", not "expect status X". So the test prints the status and body to the log and only checks that the server answered. Restful Booker answers with 500 Internal Server Error. If the server ever accepted the request and created a booking (response.ok() is true), the test saves the id so afterEach can delete it.
+
+Expired token (bookingEdgeCases.spec.ts)
+Restful Booker tokens do not expire during a test run, so an expired token is simulated with a value the server never issued ('expired-token-0000'). The server rejects it with 403. The helper updateBookingWithRetry() then gets a new token and tries once more. Only one retry: if a brand-new token is also rejected, it is a real auth problem and the test should fail, not loop.
+
+Special characters (bookingEdgeCases.spec.ts)
+The name contains Cyrillic letters, an apostrophe, & and #. In a URL & starts the next parameter and # starts a fragment, so without encodeURIComponent the server would get a cut-off name and the search would not find the booking. Date.now() is added to make the name unique.
+
+Response time (bookingEdgeCases.spec.ts)
+The 5000 ms limit is deliberately large. Restful Booker is a free shared server and its speed changes from run to run. The check only catches "something is badly wrong", for example a request that hangs. It is not a performance test.
+
+readBody() in helpers/bookingApi.ts
+Some Restful Booker error responses are plain text ("Not Found", "Internal Server Error"), not JSON. readBody() tries JSON.parse and, if that fails, returns the plain text. Without this the helper would crash and the test would never reach its assertion.
+
+Isolation (bookingIsolation.spec.ts)
+The test creates its own booking, checks it, deletes it and checks it is gone. It does not read any data left by other tests, so it gives the same result when run alone (npx playwright test bookingIsolation.spec.ts) or with the other tests in any order.

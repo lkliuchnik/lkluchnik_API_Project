@@ -33,7 +33,7 @@ Replaces the whole resource with what was sent. It is idempotent: sending the sa
 Where it is used:
 - bookingCrud.spec.ts - PUT /booking/{id} updates a booking; a GET afterwards confirms the change.
 - bookingAuth.spec.ts - the same call, used to test the authorization check (with and without a token).
-- bookingEdgeCases.spec.ts - PUT with an expired token is rejected with 403, then repeated once with a fresh token using withAuthRetry().
+- bookingEdgeCases.spec.ts - PUT with an expired token is rejected with 403, then repeated once with a fresh token using updateBookingWithRetry().
 
 
 PATCH - change only some fields

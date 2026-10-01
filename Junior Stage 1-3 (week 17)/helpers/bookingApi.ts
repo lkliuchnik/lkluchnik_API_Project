@@ -5,9 +5,7 @@ async function readBody(response: { text: () => Promise<string> }) {
   const raw = await response.text();
   if (!raw) return null;
 
-  // Restful Booker returns plain text (e.g. "Not Found", "Internal Server
-  // Error") for some non-2xx responses instead of JSON. Fall back to the raw
-  // text so callers can still inspect status codes without a parse crash.
+  // some error responses are plain text ("Not Found"), not JSON
   try {
     return JSON.parse(raw);
   } catch {
@@ -67,27 +65,21 @@ export async function patchBooking(
   return { status: response.status(), body: await readBody(response) };
 }
 
-// Restful Booker rejects a missing/invalid/expired token with 403 (not 401),
-// so both codes are treated as "the token is no longer good".
-const AUTH_REJECTED_STATUSES = [401, 403];
-
-// Runs an authenticated call; if the server rejects the token, obtains a fresh
-// one and retries exactly once. A single retry is deliberate: a second
-// rejection with a brand-new token means a real auth problem, not an expired
-// token, and should surface as a failure instead of looping.
-export async function withAuthRetry<T extends { status: number }>(
+// If the token is rejected (403 in Restful Booker), get a new one and try once more.
+export async function updateBookingWithRetry(
   request: APIRequestContext,
+  id: number,
+  booking: BookingPayload,
   token: string,
-  action: (token: string) => Promise<T>,
 ) {
-  const first = await action(token);
-  if (!AUTH_REJECTED_STATUSES.includes(first.status)) {
-    return { ...first, retried: false, token };
+  const firstTry = await updateBooking(request, id, booking, token);
+  if (firstTry.status !== 403) {
+    return { ...firstTry, retried: false };
   }
 
-  const freshToken = await createAuthToken(request);
-  const second = await action(freshToken);
-  return { ...second, retried: true, token: freshToken };
+  const newToken = await createAuthToken(request);
+  const secondTry = await updateBooking(request, id, booking, newToken);
+  return { ...secondTry, retried: true };
 }
 
 export async function deleteBooking(request: APIRequestContext, id: number, token: string) {

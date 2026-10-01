@@ -4,7 +4,7 @@ import { buildBooking, BookingPayload } from '../test-data/bookingFactory';
 import { bookingSchema, createBookingResponseSchema } from '../models/booking.model';
 import { HttpStatus } from '../test-data/httpStatus';
 
-test.describe('Booking CRUD against an existing booking', () => {
+test.describe('Booking CRUD', () => {
   let bookingId: number;
   let seedBooking: BookingPayload;
 
@@ -18,46 +18,31 @@ test.describe('Booking CRUD against an existing booking', () => {
     await deleteBooking(request, bookingId, authToken);
   });
 
-  test('GET /booking/{id} returns status 200 and the created booking fields', async ({ request }) => {
+  test('GET /booking/{id} returns the created booking', async ({ request }) => {
     const { status, body } = await getBooking(request, bookingId);
 
     expect(status).toBe(HttpStatus.OK);
     expect(body.firstname).toBe(seedBooking.firstname);
     expect(body.lastname).toBe(seedBooking.lastname);
     expect(body.totalprice).toBe(seedBooking.totalprice);
-
-    const parsed = bookingSchema.safeParse(body);
-    expect(parsed.success, parsed.success ? undefined : JSON.stringify(parsed.error?.issues)).toBe(true);
+    expect(() => bookingSchema.parse(body)).not.toThrow();
   });
 
-  test('PUT /booking/{id} updates the booking and the change is reflected on a follow-up GET', async ({
-    request,
-    authToken,
-  }) => {
-    const updatedBooking = buildBooking({
-      firstname: 'Updated',
-      totalprice: seedBooking.totalprice + 50,
-    });
+  test('PUT /booking/{id} updates the booking', async ({ request, authToken }) => {
+    const updatedBooking = buildBooking({ firstname: 'Updated', totalprice: 999 });
 
     const putResult = await updateBooking(request, bookingId, updatedBooking, authToken);
     expect(putResult.status).toBe(HttpStatus.OK);
-
-    // PUT returns the full updated booking, so the same schema applies.
-    const parsed = bookingSchema.safeParse(putResult.body);
-    expect(parsed.success, parsed.success ? undefined : JSON.stringify(parsed.error?.issues)).toBe(true);
+    expect(() => bookingSchema.parse(putResult.body)).not.toThrow();
 
     const { body } = await getBooking(request, bookingId);
-    expect(body.firstname).toBe(updatedBooking.firstname);
-    expect(body.totalprice).toBe(updatedBooking.totalprice);
+    expect(body.firstname).toBe('Updated');
+    expect(body.totalprice).toBe(999);
   });
 
-  test('DELETE /booking/{id} removes the booking — verified by a 404 on the follow-up GET', async ({
-    request,
-    authToken,
-  }) => {
+  test('DELETE /booking/{id} removes the booking', async ({ request, authToken }) => {
     const deleteResult = await deleteBooking(request, bookingId, authToken);
-    // Documented Restful Booker quirk: DELETE returns 201, not 204.
-    expect(deleteResult.status).toBe(HttpStatus.CREATED);
+    expect(deleteResult.status).toBe(HttpStatus.CREATED); // Restful Booker returns 201 for DELETE
 
     const { status } = await getBooking(request, bookingId);
     expect(status).toBe(HttpStatus.NOT_FOUND);
@@ -65,66 +50,42 @@ test.describe('Booking CRUD against an existing booking', () => {
 });
 
 test.describe('Booking creation', () => {
-  test('POST /booking with valid data — task expects 201; Restful Booker actually returns 200 (documented deviation, see helpers/assertion-notes.txt)', async ({
-    request,
-    authToken,
-  }) => {
-    // Marks this test as expected to fail: Playwright reports it green as
-    // long as it fails for this reason, and flags it red if it ever starts
-    // passing — which would mean Restful Booker changed and this documented
-    // deviation (see helpers/assertion-notes.txt) is stale and needs review.
-    test.fail();
+  let createdId: number | undefined;
 
-    const newBooking = buildBooking();
-    const { status, body } = await createBooking(request, newBooking);
-
-    try {
-      // Written exactly as Stage 2 specifies ("assert 201 status on create").
-      // This is expected to fail against the real API.
-      expect(status).toBe(HttpStatus.CREATED);
-
-      expect(body.booking.firstname).toBe(newBooking.firstname);
-      expect(body.booking.lastname).toBe(newBooking.lastname);
-      expect(body.bookingid).toBeDefined();
-
-      const parsed = createBookingResponseSchema.safeParse(body);
-      expect(parsed.success, parsed.success ? undefined : JSON.stringify(parsed.error?.issues)).toBe(true);
-    } finally {
-      if (body?.bookingid) {
-        await deleteBooking(request, body.bookingid, authToken);
-      }
+  test.afterEach(async ({ request, authToken }) => {
+    if (createdId) {
+      await deleteBooking(request, createdId, authToken);
+      createdId = undefined;
     }
   });
 
-  test('POST /booking with a wrong Content-Type header — observed behavior, not a fixed expectation', async ({
-    request,
-    authToken,
-  }) => {
+  test('POST /booking with valid data returns 201 and the new booking id', async ({ request }) => {
+    test.fail(); // known deviation: the API returns 200, see assertion-notes.txt
+
     const newBooking = buildBooking();
+    const { status, body } = await createBooking(request, newBooking);
+    createdId = body.bookingid;
+
+    expect(status).toBe(HttpStatus.CREATED);
+    expect(body.booking.firstname).toBe(newBooking.firstname);
+    expect(body.booking.lastname).toBe(newBooking.lastname);
+    expect(() => createBookingResponseSchema.parse(body)).not.toThrow();
+  });
+
+  test('POST /booking with a wrong Content-Type (observe the response)', async ({ request }) => {
     const response = await request.post('/booking', {
-      data: newBooking,
+      data: buildBooking(),
       headers: { 'Content-Type': 'text/plain' },
     });
-    const status = response.status();
-    const rawBody = await response.text();
 
-    console.log('Observed status with wrong Content-Type:', status);
-    console.log('Observed body:', rawBody);
+    console.log('Status with wrong Content-Type:', response.status());
+    console.log('Body:', await response.text());
 
-    // Stage 2 asks to "observe behavior" here, not to assert a guessed outcome,
-    // so the only fixed check is that the server responded at all.
-    expect(status).toBeGreaterThanOrEqual(HttpStatus.OK);
+    // The task says "observe", so we only check that the server answered.
+    expect(response.status()).toBeGreaterThanOrEqual(HttpStatus.OK);
 
-    // The server may respond with plain text (e.g. "Internal Server Error")
-    // instead of JSON for this malformed request, so parsing is best-effort —
-    // only clean up if a real booking actually got created.
-    try {
-      const body = rawBody ? JSON.parse(rawBody) : null;
-      if (body?.bookingid) {
-        await deleteBooking(request, body.bookingid, authToken);
-      }
-    } catch {
-      // No JSON body to clean up from.
+    if (response.ok()) {
+      createdId = (await response.json()).bookingid;
     }
   });
 });

@@ -12,8 +12,7 @@ export interface BookingPayload {
 
 let sequence = 0;
 
-// Generates a fresh, unique booking payload per call so tests never rely on
-// hardcoded/shared data (each test creates its own booking).
+// Returns new booking data with unique names on every call.
 export function buildBooking(overrides: Partial<BookingPayload> = {}): BookingPayload {
   sequence += 1;
   const unique = `${Date.now()}-${sequence}`;
