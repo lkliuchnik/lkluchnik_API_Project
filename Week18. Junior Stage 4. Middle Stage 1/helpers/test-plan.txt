@@ -85,8 +85,12 @@ In the folder "Week18. Junior Stage 4. Middle Stage 1":
    npx playwright test       run all tests
    npm run test:report       open the HTML report of the last run
 
-Settings come from .env (copy .env.example). Without .env the tests use the
-public DummyJSON address and the demo user from the DummyJSON docs.
+Settings: an optional .env file in this folder (it is not in git):
+   BASE_URL=https://dummyjson.com
+   AUTH_USERNAME=emilys
+   AUTH_PASSWORD=emilyspass
+Without .env the tests use exactly these values - the public DummyJSON
+address and the demo user from the DummyJSON docs.
 
 CI runs the same steps on GitHub:
    .github/workflows/week18-junior4-middle1.yml (in the repository root)
@@ -97,9 +101,7 @@ Project tree
 ------------
 
     Week18. Junior Stage 4. Middle Stage 1/
-    |-- .env.example               settings template (the real .env is not in git)
-    |-- .gitignore
-    |-- .vscode/extensions.json    recommends the Playwright extension
+    |-- .gitignore                 keeps node_modules, .env and reports out of git
     |-- package.json, package-lock.json, tsconfig.json
     |-- playwright.config.ts       API address and Playwright settings
     |
@@ -272,4 +274,30 @@ Evidence checklist - Middle Stage 1
 [x] Factory functions with defaults               test-data/userFactory.ts
 [x] TypeScript interfaces for API models          models/
 [x] Short explanation of refactoring decisions    refactoring-decisions.txt
-[ ] Green CI run after the refactoring            after the next push
+[x] Green CI run after the refactoring            screenshots/ci-green-run-middle1.png
+
+
+Evidence: green CI run of Middle Stage 1
+----------------------------------------
+
+Screenshot:  screenshots/ci-green-run-middle1.png
+             (the Week 18 workflow page in the Actions tab, all 3 runs green)
+Workflow:    API tests - Week 18 (Junior Stage 4, Middle Stage 1)
+Commit:      6c5f169 "Week 18. Middle Stage 1. Refactoring.", pushed to main
+             on 2026-10-08
+
+Run #2 - started by the push
+   Link:     https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/37771770408
+   Result:   green, 13 seconds
+
+Run #3 - started by hand ("Run workflow" button) on the same commit
+   Link:     https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/37771885900
+   Result:   green, 19 seconds
+   Why:      shows that the workflow_dispatch trigger works, and that the
+             result does not depend on how the run was started.
+
+Run #1 on the same page is the Junior Stage 4 baseline (d3da450), so the page
+shows "before" and "after" side by side - both green.
+
+The same push also started the week 17 workflow (run #5, green). The filter
+that limits each workflow to its own folder is still only on this computer.
