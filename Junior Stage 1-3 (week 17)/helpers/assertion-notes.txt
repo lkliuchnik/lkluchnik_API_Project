@@ -1,96 +1,192 @@
 Assertion choices and known deviations
 ======================================
 
-Stage 2 evidence: why each kind of assertion was chosen, and where the real API differs from the task.
+Stage 2 evidence: why each kind of check was chosen, and the 2 places where
+Restful Booker does not do what the task asks.
 
 
-Main rule
----------
+In short
+--------
 
-Every assertion follows the exact wording of the Junior Stage 1-3 task. It is not changed to match what Restful Booker actually returns. When the real API behaves differently, the test still checks what the task says, the difference is explained in a comment next to the assertion, and it is listed below.
-
-So a failing assertion here can mean two things: "the code is broken" or "the API behaves differently than the task expects". Telling these apart is part of the exercise.
-
-
-Known deviations (these tests fail on purpose)
-----------------------------------------------
-
-1. bookingCrud.spec.ts - "POST /booking with valid data"
-   The task expects: 201 Created
-   Restful Booker returns: 200 OK
-
-2. bookingAuth.spec.ts - "PUT without a token"
-   The task expects: 401 Unauthorized
-   Restful Booker returns: 403 Forbidden
-
-Both tests start with test.fail(). This does not change the assertion: it still checks 201 and 401 exactly as the task says. It only changes how Playwright reports the result:
-
-- The test fails, as expected -> Playwright reports it as passed.
-- The test suddenly passes -> Playwright reports it as failed.
-
-The second case would mean Restful Booker changed its behaviour and this list is out of date. So the suite turns red exactly when this document needs to be reviewed.
+- Every check follows the task text, word for word.
+- 2 tests are marked test.fail, because Restful Booker answers differently:
+  201 expected but 200 received, and 401 expected but 403 received.
+- The checks compare the answer with the data the test sent, not with fixed
+  numbers, and one schema check proves the whole answer has the right shape.
 
 
-Other Playwright modifiers we considered
-----------------------------------------
+Contents
+--------
 
-- test.skip() - not used. A skipped test does not run at all, so the real API behaviour would be hidden. We want these two tests to call the real API on every run.
-- test.fixme() - not used. It fits a different situation: a task that cannot be tried at all because the API has no matching endpoint. That does not happen in Stage 1-3.
-- test.only() - only for local debugging of one test. Never committed, because it silently turns off all other tests for everyone, including CI.
+   The main rule
+   Known deviations - 2 tests that fail on purpose
+   Other Playwright marks we considered
+   Why each kind of check was chosen
+   Why tests create and delete their own data
+   Notes on single tests
 
 
-Why each assertion was chosen
------------------------------
+The main rule
+-------------
 
-- Status codes are checked with toBe (one exact value), not with ranges. The only exception is the wrong Content-Type test: the task asks to "observe behaviour" there, so it only checks that the server answered at all.
+Every check follows the exact words of the Junior Stage 1-3 task. It is NOT
+changed to match what Restful Booker really returns.
 
-- Body fields are compared with the payload the test itself sent (made by buildBooking()), never with a fixed hardcoded value. This proves the response really reflects the request.
+When the API behaves differently:
+- the test still checks what the task says,
+- a one-line comment above the test names the problem,
+- the problem is listed below.
 
-- Schema validation (zod: bookingSchema, createBookingResponseSchema in models/booking.model.ts) runs in the GET and PUT tests, written as expect(() => bookingSchema.parse(body)).not.toThrow(). parse() throws an error that lists the wrong fields, so a failure shows exactly what is wrong. Checking two or three fields by hand only proves those fields are right; the schema proves the whole response has the right shape and types.
+So a failed check can mean two things: "the code is broken" or "the API
+behaves differently from the task". Telling them apart is part of the
+exercise.
 
-- Array.every() is used in bookingCollection.spec.ts. The list endpoint promises that every item has a numeric bookingid. Checking only body[0] cannot prove that for every item.
 
-- Optional chaining (?.) is used where a value may really be missing: the first item of an empty list (body[0]?.bookingid in bookingCollection.spec.ts) and a nested field that does not exist (body?.bookingdates?.extra?.value in bookingEdgeCases.spec.ts). Without ?. the test would crash with a TypeError; with it we get undefined and can check it with toBeUndefined().
+Known deviations - 2 tests that fail on purpose
+-----------------------------------------------
 
-- Strict equality: toBe already compares strictly (Object.is), and it shows Expected and Received values when it fails. Explicit === is used inside the Array.every() and Array.some() callbacks (typeof entry?.bookingid === 'number', entry.bookingid === createdId). We avoid expect(a === b).toBe(true), because when it fails it only says "expected true, received false". Loose == is never used.
+1. Creating a booking
+   Test:    bookingCrud.spec.ts
+            "POST /booking with valid data returns 201 and the new booking id"
+   Task:    201 Created
+   API:     200 OK
 
-- toBeLessThan is used only for the response-time check in bookingEdgeCases.spec.ts. The limit (5 seconds) is deliberately generous: it is a sanity check, not a performance limit.
+2. Writing without a token
+   Test:    bookingAuth.spec.ts
+            "PUT /booking/{id} without a token returns 401"
+   Task:    401 Unauthorized
+   API:     403 Forbidden
+
+How they are marked
+   Both tests are declared as test.fail('title', ...) instead of
+   test('title', ...), so the mark is on the title line, not hidden inside
+   the test.
+
+What test.fail does
+   - the test fails, as expected   -> Playwright shows it as passed,
+   - the test suddenly passes      -> Playwright shows it as failed.
+
+   The check itself is not changed: it still asks for 201 and 401. The second
+   case would mean Restful Booker has changed - so the run turns red exactly
+   when this list needs a review.
+
+
+Other Playwright marks we considered
+------------------------------------
+
+test.skip - not used
+   A skipped test does not run at all, so the real API behaviour would be
+   hidden. We want these two tests to call the real API on every run.
+
+test.fixme - not used
+   It fits another case: a task that cannot be tried at all, because the API
+   has no such endpoint. That does not happen in Stage 1-3.
+
+test.only - not committed, ever
+   Only for running one test locally while debugging. Committed, it would
+   silently switch off all other tests for everyone, CI included.
+
+
+Why each kind of check was chosen
+---------------------------------
+
+One exact status (toBe), not a range
+   The only exception is the wrong Content-Type test: the task says "observe"
+   there, so it only checks that the server answered at all.
+
+Answer compared with what was sent
+   Body fields are compared with the data the test itself sent (made by
+   buildBooking()), never with a fixed value. This proves the answer really
+   reflects the request.
+
+Schema check (zod)
+   Used in the GET and PUT tests, written as
+   expect(() => bookingSchema.parse(body)).not.toThrow().
+   - Checking 2-3 fields by hand proves only those fields.
+   - The schema proves the whole answer has the right fields and types.
+   - When it fails, the error lists exactly which fields are wrong.
+
+Array.every() for lists (bookingCollection.spec.ts)
+   The list promises that EVERY item has a numeric booking id. Checking only
+   the first item cannot prove that.
+
+Optional chaining (?.) where a value can be missing
+   - the first item of an empty list: body[0]?.bookingid
+   - a nested field that does not exist: body?.bookingdates?.extra?.value
+   Without ?. the test would crash with an error. With it we get "undefined"
+   and check that with toBeUndefined().
+
+Strict equality
+   toBe already compares strictly, and on failure it shows the Expected and
+   Received values. Plain === is used only inside the every() and some()
+   callbacks. We avoid expect(a === b).toBe(true): on failure it only says
+   "expected true, received false". Loose == is never used.
+
+toBeLessThan only for response time
+   The 5-second limit is generous on purpose: it is a sanity check, not a
+   performance limit.
 
 
 Why tests create and delete their own data
 ------------------------------------------
 
-Every CRUD and auth test creates its own booking (in beforeEach, or inside the test) and deletes it afterwards (in afterEach, or in a finally block). Because of this any test can run alone or in any order, without relying on data left by another test. This is the Stage 3 isolation requirement; bookingIsolation.spec.ts shows it on its own.
+Every CRUD and auth test creates its own booking - before the test
+(beforeEach) or inside it - and deletes it after the test (afterEach) or at
+the end of the test.
+
+So any test can run alone or in any order, and never depends on data left by
+another test. This is the Stage 3 isolation requirement;
+bookingIsolation.spec.ts shows it on its own.
 
 
-Notes on the test code
-----------------------
+Notes on single tests
+---------------------
 
 The test files keep only one-line comments. The longer explanations are here.
 
-test.fail() in the two deviation tests
-The line test.fail() at the start of the test means "this test is expected to fail". See "Known deviations" above for why, and what happens if the API changes.
+DELETE answers 201 (bookingCrud.spec.ts)
+   Restful Booker answers a successful DELETE with 201 Created; 200 or 204
+   would be more usual. The test checks 201, because that is what this API
+   really does, and then a GET proves the booking is gone (404).
 
-DELETE returns 201 (bookingCrud.spec.ts)
-Restful Booker answers a successful DELETE with 201 Created. 200 or 204 would be more usual. The test checks 201, because that is what this API really does, and then checks with a GET that the booking is gone (404).
-
-Cleaning up in "Booking creation" (bookingCrud.spec.ts)
-These tests create a booking inside the test, so beforeEach cannot create it for them. Each test saves the new id in createdId, and afterEach deletes it. This also works for the POST test that fails on purpose: the id is saved before the failing assertion, so afterEach still deletes the booking.
+Cleanup in "Booking creation" (bookingCrud.spec.ts)
+   These tests create the booking inside the test, so beforeEach cannot do it
+   for them. Each test saves the new id, and afterEach deletes it. This works
+   for the test.fail POST test too: the id is saved before the failing check.
 
 Wrong Content-Type (bookingCrud.spec.ts)
-The task says "observe the behaviour", not "expect status X". So the test prints the status and body to the log and only checks that the server answered. Restful Booker answers with 500 Internal Server Error. If the server ever accepted the request and created a booking (response.ok() is true), the test saves the id so afterEach can delete it.
+   The task says "observe the behaviour", not "expect status X". So the test
+   prints the status and body and only checks that the server answered.
+   Restful Booker answers 500 Internal Server Error. If the server ever
+   accepted the request and created a booking, the test saves the id so
+   afterEach can delete it.
 
 Expired token (bookingEdgeCases.spec.ts)
-Restful Booker tokens do not expire during a test run, so an expired token is simulated with a value the server never issued ('expired-token-0000'). The server rejects it with 403. The helper updateBookingWithRetry() then gets a new token and tries once more. Only one retry: if a brand-new token is also rejected, it is a real auth problem and the test should fail, not loop.
+   Restful Booker tokens do not expire during a test run, so an expired token
+   is imitated with a value the server never issued ('expired-token-0000').
+   The server rejects it with 403. updateBookingWithRetry() then gets a new
+   token and tries ONCE more. If a brand-new token is rejected too, it is a
+   real login problem, and the test should fail - not loop.
 
 Special characters (bookingEdgeCases.spec.ts)
-The name contains Cyrillic letters, an apostrophe, & and #. In a URL & starts the next parameter and # starts a fragment, so without encodeURIComponent the server would get a cut-off name and the search would not find the booking. Date.now() is added to make the name unique.
+   The name has Cyrillic letters, an apostrophe, & and #. In a web address &
+   starts the next parameter and # starts a page anchor. Without
+   encodeURIComponent the server would get a cut-off name, and the search
+   would not find the booking. Date.now() makes the name unique.
 
 Response time (bookingEdgeCases.spec.ts)
-The 5000 ms limit is deliberately large. Restful Booker is a free shared server and its speed changes from run to run. The check only catches "something is badly wrong", for example a request that hangs. It is not a performance test.
+   Restful Booker is a free shared server, and its speed changes from run to
+   run. The 5000 ms limit only catches "something is badly wrong", for
+   example a request that hangs.
 
 readBody() in helpers/bookingApi.ts
-Some Restful Booker error responses are plain text ("Not Found", "Internal Server Error"), not JSON. readBody() tries JSON.parse and, if that fails, returns the plain text. Without this the helper would crash and the test would never reach its assertion.
+   Some Restful Booker errors are plain text ("Not Found", "Internal Server
+   Error"), not JSON. readBody() tries to read JSON and, if that fails,
+   returns the plain text. Without it the helper would crash, and the test
+   would never reach its check.
 
 Isolation (bookingIsolation.spec.ts)
-The test creates its own booking, checks it, deletes it and checks it is gone. It does not read any data left by other tests, so it gives the same result when run alone (npx playwright test bookingIsolation.spec.ts) or with the other tests in any order.
+   The test creates its own booking, checks it, deletes it and checks it is
+   gone. It reads no data from other tests, so it gives the same result when
+   run alone (npx playwright test bookingIsolation.spec.ts) or with the
+   others in any order.

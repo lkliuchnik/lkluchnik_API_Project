@@ -1,174 +1,294 @@
 CI pipeline explained
 =====================
 
-Stage 1-2: how tests fit into CI, what starts a pipeline, how to read results, rerun jobs, find logs and artifacts, and how a build failure differs from a test failure.
+Stage 1-2 evidence: how the tests run in CI, what starts a run, how to read
+the results, rerun a job, find the logs and the report, and how a build
+failure differs from a test failure. At the end: one green and one red run,
+and how they were analysed.
 
 Workflow file: .github/workflows/junior-stage-1-3-week-17.yml
-It is in the repository root, because GitHub Actions ignores workflow files inside nested folders.
+It is in the repository root, because GitHub Actions does not read workflow
+files from inner folders.
 
 
-How tests fit into CI
----------------------
+In short
+--------
 
-Locally a person runs "npx playwright test" by hand, and only when they remember to. CI runs the same command automatically, on a clean machine, every time code is proposed or merged. This gives two things a local run cannot:
-
-- Nothing depends on one person's computer: no forgotten .env, no globally installed tools, no old node_modules. npm ci installs exactly what package-lock.json says.
-- Nothing is merged without a check: the pull request shows the test result before merging, and the run on main after merging confirms the merged code still works.
-
-
-What starts this pipeline
--------------------------
-
-- pull_request to main - when a PR into main is opened, or a new commit is pushed to its branch.
-- push to main - when commits land on main, including the merge of a PR.
-- workflow_dispatch - started by hand: Actions tab -> this workflow -> "Run workflow".
-
-A push to some other branch without an open PR does NOT start it.
+- After every push to main that changes this folder or the workflow (and on
+  such pull requests into main) GitHub runs:
+  install -> type check -> tests -> save the HTML report.
+- A red "type check" step means a build failure (no test ran). A red "tests"
+  step means a test failure.
+- The 2 test.fail tests do not make a run red.
+- Evidence: run #1 was green (16 of 16), run #2 was made red on purpose and
+  analysed step by step.
 
 
-Pipeline steps
---------------
+Contents
+--------
 
-1. actions/checkout - copies the repository to a fresh Ubuntu machine.
-2. actions/setup-node - installs Node.js 24 (LTS) and restores the npm cache.
-3. npm ci - clean install of dependencies from package-lock.json.
-4. npx tsc --noEmit - checks all TypeScript types without creating any files. This is the BUILD step.
-5. npx playwright test - runs the tests. GitHub sets CI=true automatically, so playwright.config.ts turns on 1 retry and the HTML report. This is the TEST step.
-6. actions/upload-artifact - saves the playwright-report folder as an artifact. Because of "if: always()" it runs even when step 4 or 5 failed, which is exactly when the report is needed most.
+   Part 1 - how the pipeline works
+      Why run tests in CI
+      What starts a run
+      The steps
+      Build failure vs test failure
+      How to read the results
+      Rerunning a job
+      Artifacts - the saved report
+      Tests that are expected to fail
+   Part 2 - evidence
+      The green run
+      The red run, and how it was analysed
+
+
+Part 1 - how the pipeline works
+===============================
+
+Why run tests in CI
+-------------------
+
+On a laptop a person runs "npx playwright test" by hand, and only when they
+remember. CI runs the same command automatically, on a clean machine, every
+time code is pushed or proposed. That gives two things a local run cannot:
+
+- Nothing depends on one computer: no forgotten settings, no tools installed
+  only on one laptop, no old packages. npm ci installs exactly what
+  package-lock.json says.
+- Nothing is merged without a check: a pull request shows the test result
+  before merging, and the run on main after merging confirms the merged code
+  still works.
+
+
+What starts a run
+-----------------
+
+- push to main - when commits land on main, including a merged pull request.
+- pull_request to main - when a pull request into main is opened, or a new
+  commit is pushed to its branch.
+- workflow_dispatch - by hand: Actions tab -> this workflow -> "Run workflow".
+
+The push and pull_request triggers have a "paths" filter: they start only
+when something changes in the "Junior Stage 1-3 (week 17)" folder or in this
+workflow file. A change in another week's folder does not start this
+workflow. A push to another branch without a pull request does not start it
+either.
+
+
+The steps
+---------
+
+1. actions/checkout       copies the repository to a fresh Ubuntu machine.
+2. actions/setup-node     installs Node.js 24 (long-term support) and restores
+                          the npm cache.
+3. npm ci                 a clean install of the packages from
+                          package-lock.json.
+4. npx tsc --noEmit       checks all TypeScript types and creates no files.
+                          This is the BUILD step.
+5. npx playwright test    runs the tests. GitHub sets CI=true, so
+                          playwright.config.ts turns on 1 retry and the HTML
+                          report. This is the TEST step.
+6. upload-artifact        saves the playwright-report folder. Because of
+                          "if: always()" it runs even when step 4 or 5 failed -
+                          exactly when the report is needed most.
+
+Step 5 also gets the settings (BASE_URL, AUTH_USERNAME, AUTH_PASSWORD) from
+the workflow file, because there is no .env file on the CI machine.
 
 
 Build failure vs test failure
 -----------------------------
 
 Build failure
-- Red step: npm ci or npx tsc --noEmit.
-- Meaning: the project could not even be prepared, so no test ran.
-- Typical cause: a mistake in the code or setup - a TypeScript type error, a typo, a broken package.json or lockfile.
-- Where to look: the log of the red step.
+   Red step:    npm ci or npx tsc --noEmit
+   Means:       the project could not even be prepared - no test ran.
+   Usual cause: a mistake in the code or setup: a type error, a typo, a
+                broken package.json or lock file.
+   Look at:     the log of the red step.
 
 Test failure
-- Red step: npx playwright test.
-- Meaning: the project was built and the tests ran, but at least one assertion did not hold.
-- Typical cause: a code change, OR the API behaving differently (outage, changed response).
-- Where to look: the log of the test step and the HTML report artifact.
+   Red step:    npx playwright test
+   Means:       the project was built and the tests ran, but at least one
+                check did not hold.
+   Usual cause: a code change, OR the API behaving differently (it is down,
+                or its answer changed).
+   Look at:     the log of the test step, and the HTML report.
 
-Because type checking is a separate step, you can see which kind of failure it is from the name of the red step, before opening any log.
+Because the type check is a separate step, the name of the red step already
+tells you which kind of failure it is - before you open any log.
 
 
-Reading the results of a run
+How to read the results
+-----------------------
+
+1. Open the Actions tab and choose the run. It is named after the commit or
+   pull request title.
+2. The run summary shows a green tick or a red cross for each job. The
+   artifacts are listed at the bottom.
+3. Click the "test" job. Every step can be opened; a failed step opens by
+   itself.
+4. In the "npx playwright test" step every test has one line: "ok" or "x".
+   For a failed test the log shows its title, file and line, the expect(...)
+   that failed, and the Expected and Received values. This is how you find
+   which check failed.
+5. A pull request page shows the same result under "Checks". "Details" opens
+   the log.
+
+
+Rerunning a job
+---------------
+
+On a finished run: "Re-run jobs" (top right) -> "Re-run all jobs" or "Re-run
+failed jobs".
+
+Useful when a failure looks temporary, for example Restful Booker did not
+answer in time. If a rerun passes without any code change, the test is flaky
+(sometimes passes, sometimes fails) - worth noting, not ignoring.
+
+"Run workflow" (workflow_dispatch) starts a completely new run without
+pushing anything.
+
+
+Artifacts - the saved report
 ----------------------------
 
-1. In the repository open the Actions tab and choose the run (it is named after the commit or PR title).
-2. The run summary shows a green tick or red cross for each job; artifacts are listed at the bottom.
-3. Click the "test" job. Every step can be expanded; a failed step opens automatically.
-4. In the "npx playwright test" step every test has one line: "ok" or "x". For a failed test the log shows its title, file and line, the expect(...) that failed, and the Expected and Received values. This is how you find which assertion failed.
-5. The PR page shows the same result under "Checks". The "Details" link opens the log directly.
+An artifact is a file or folder made during a run that GitHub keeps after
+the machine is gone. Here it is "playwright-report", kept for 14 days.
 
-
-Rerunning jobs
---------------
-
-On a finished run click "Re-run jobs" (top right), then "Re-run all jobs" or "Re-run failed jobs". This helps when a failure looks temporary, for example Restful Booker timed out. If a rerun passes without any code change, the test was flaky, not broken - worth noting, not ignoring. "Run workflow" (workflow_dispatch) starts a completely new run without pushing anything.
-
-
-Artifacts - what they are and how to use them
----------------------------------------------
-
-An artifact is a file or folder created during a run that GitHub keeps after the machine is deleted. Here it is "playwright-report", kept for 14 days.
-
-How to use it:
-1. Open the run summary and download playwright-report.zip from the Artifacts section.
+How to open it:
+1. Open the run summary, download playwright-report.zip under Artifacts.
 2. Unzip it.
-3. In the project folder run: npx playwright show-report <unzipped folder>
-   (Opening index.html straight from disk may not load all data.)
+3. In the project folder run:  npx playwright show-report <unzipped folder>
+   (opening index.html straight from disk may not load everything).
 
-The report shows every test with its steps, duration, retries, console.log output and the full error for any failure. This is easier than scrolling through the raw log.
+The report shows every test with its steps, time, retries, printed output
+and the full error of any failure - easier than scrolling through the log.
 
 
 Tests that are expected to fail
 -------------------------------
 
-The two tests marked with test.fail() (see assertion-notes.txt) appear as "x" in the log but do NOT make the job red. Playwright counts them as passed because they failed as expected. The job turns red only if one of them suddenly passes, or if any normal test fails.
+The 2 tests marked test.fail (assertion-notes.txt) show as "x" in the log,
+but do NOT make the job red: Playwright counts them as passed, because they
+failed as expected. The job turns red only if one of them suddenly passes,
+or if any normal test fails.
 
 
-Evidence: first green run
--------------------------
+Part 2 - evidence
+=================
 
-Screenshots:
-- helpers/screenshots/ci-green-run.png - the run list in the Actions tab
-- helpers/screenshots/ci-green-run-report-1.png and ci-green-run-report-2.png - the HTML report from the artifact of this run (top and bottom of the page)
-- helpers/screenshots/ci-green-run-smoke-test.png - the Stage 1 smoke test opened in that report, with the API response
-Link: https://github.com/lkliuchnik/lkluchnik_API_Project/actions
+The green run
+-------------
 
-- Workflow: API tests - Junior Stage 1-3 (week 17)
-- Run: #1, "Week 17. Junior Stage 1,2,3"
-- Commit: 84e7a9a, pushed by lkliuchnik on 2026-10-01
-- Branch: main
-- Trigger: push to main. The commit was pushed straight to main, without a pull request, so the "pull_request" trigger was not used for this run.
-- Result: green (success), total time 17 seconds
+Workflow:  API tests - Junior Stage 1-3 (week 17)
+Run:       #1, "Week 17. Junior Stage 1,2,3"
+Commit:    84e7a9a, pushed to main by lkliuchnik on 2026-10-01
+           (no pull request)
+Trigger:   push to main
+Result:    green, 17 seconds
+Link:      https://github.com/lkliuchnik/lkluchnik_API_Project/actions
 
-What this run shows:
-- The workflow file is found in the repository root and starts on its own after a push to main.
-- npm ci, the type check (tsc --noEmit) and all tests pass on a clean GitHub machine, not only on the local computer.
-- The two test.fail() tests did not make the run red, because they failed in the expected way.
+Screenshots (in helpers/screenshots/):
+   ci-green-run.png              the run list in the Actions tab
+   ci-green-run-report-1.png     the HTML report of this run, top
+   ci-green-run-report-2.png     the HTML report of this run, bottom
+   ci-green-run-smoke-test.png   the Stage 1 smoke test opened in the report
 
-What the HTML report of this run shows
-The artifact "playwright-report" was downloaded from run #1, unzipped and opened. The report was created on 10/1/2026 at 12:22 (total test time 3.1 s) and shows "All 16, Passed 16, Failed 0, Flaky 0, Skipped 0".
-- Every test in all six files is green: bookingAuth, bookingCollection, bookingCrud, bookingEdgeCases, bookingIsolation, bookingSmoke.
-- The Stage 1 smoke test "GET /booking returns a list of booking ids" (bookingSmoke.spec.ts) passed - this is the passing API call in CI.
-  When the test is opened in the report (ci-green-run-smoke-test.png), it shows:
-  - Test Steps: GET /booking (127 ms), then the two Expect "toBe" checks (status 200, body is an array) - all green.
-  - Attachments -> stdout: the response printed by the test - "Status: 200" and the first entries of the list ({"bookingid": 1}, {"bookingid": 2}, {"bookingid": 3}).
-- The two deviation tests (bookingAuth.spec.ts:18 and bookingCrud.spec.ts:68) are shown as passed, because they are marked test.fail() and failed as expected.
-- "Flaky 0" means no test needed a retry.
-The report shows the long test titles used at that time; they were shortened later during the code review.
+What the run shows
+   - The workflow is found in the repository root and starts by itself
+     after a push to main.
+   - Install, type check and all tests pass on a clean GitHub machine, not
+     only on one laptop.
+   - The 2 test.fail tests did not make the run red.
+
+What the HTML report shows
+   The report was downloaded from run #1 and opened. It was made on
+   2026-10-01 at 12:22 (total test time 3.1 s) and says: All 16, Passed 16,
+   Failed 0, Flaky 0, Skipped 0.
+   - Every test in all six files is green.
+   - The Stage 1 smoke test "GET /booking returns a list of booking ids"
+     passed - this is the passing API call in CI. Opened in the report
+     (ci-green-run-smoke-test.png) it shows:
+       - the steps: GET /booking (127 ms), then the two checks (status 200,
+         the body is a list) - all green;
+       - the printed output: "Status: 200" and the first entries of the list
+         ({"bookingid": 1}, {"bookingid": 2}, {"bookingid": 3}).
+   - The 2 test.fail tests (bookingAuth.spec.ts:18 and bookingCrud.spec.ts:68
+     at that time) show as passed, because they failed as expected.
+   - "Flaky 0": no test needed a retry.
+   The test titles in the report are the long ones used at that time; they
+   were shortened later during a code review.
 
 
-Evidence: failed run and how it was analysed
---------------------------------------------
+The red run, and how it was analysed
+------------------------------------
 
-Screenshots: helpers/screenshots/ci-red-run.png (run list), helpers/screenshots/ci-red-run-report.png (HTML report from the artifact)
-Link: https://github.com/lkliuchnik/lkluchnik_API_Project/actions
+Workflow:  API tests - Junior Stage 1-3 (week 17)
+Run:       #2, "Week 17_Junior Stage 1,2,3 - Red run"
+Commit:    1974447, pushed to main by lkliuchnik on 2026-10-01
+Result:    red, 13 seconds
+Link:      https://github.com/lkliuchnik/lkluchnik_API_Project/actions
 
-- Run: #2, "Week 17_Junior Stage 1,2,3 - Red run"
-- Commit: 1974447, pushed by lkliuchnik on 2026-10-01
-- Branch: main, trigger: push to main
-- Result: red (failure), total time 13 seconds
+Screenshots (in helpers/screenshots/):
+   ci-red-run.png          the run list
+   ci-red-run-report.png   the HTML report of this run
 
 How the red run was made
-On purpose. In tests/bookingAuth.spec.ts the line test.fail() was commented out in the test "PUT /booking/{id} without a token". That test checks for 401, as the task says, but Restful Booker returns 403. With test.fail() Playwright counts this as an expected failure; without it, it is a normal failed test, so the job turns red.
+   On purpose. In bookingAuth.spec.ts the line test.fail() was commented out
+   in the test "PUT /booking/{id} without a token". (At that time the mark
+   was a call inside the test; now it is on the declaration.)
+   That test checks for 401, as the task says, but Restful Booker answers
+   403. With test.fail this is an
+   expected failure; without it, it is a normal failed test - so the job
+   turns red.
 
 Step 1 - which step is red?
-The job "test" failed in the step "npx playwright test". The steps before it - npm ci and npx tsc --noEmit - are green. So this is a TEST failure, not a build failure: the project was installed and type-checked, the tests ran, and an assertion did not hold.
+   "npx playwright test". The steps before it - npm ci and the type check -
+   are green. So this is a TEST failure, not a build failure: the project
+   was installed and type-checked, the tests ran, and a check did not hold.
 
 Step 2 - which test failed?
-At the end of the step log Playwright prints a summary:
+   At the end of the log Playwright prints a summary:
 
-    1 failed
-      tests/bookingAuth.spec.ts:18:7 > Booking auth > PUT /booking/{id} without a token ...
-    15 passed
+       1 failed
+         tests/bookingAuth.spec.ts:18:7 > Booking auth > PUT /booking/{id} without a token ...
+       15 passed
 
-So exactly one test out of 16 failed; all others passed.
-(After this run the test titles were shortened during a code review; this test is now called "PUT /booking/{id} without a token returns 401". The log above shows the title as it was in run #2.)
+   So exactly one test of 16 failed. (The title was shortened later; the
+   test is now called "PUT /booking/{id} without a token returns 401".)
 
-Step 3 - which assertion failed and why?
-Above the summary the log shows the error for that test:
+Step 3 - which check failed, and why?
+   Above the summary the log shows the error:
 
-    Error: expect(received).toBe(expected) // Object.is equality
+       Error: expect(received).toBe(expected) // Object.is equality
+       Expected: 401
+       Received: 403
+           at tests/bookingAuth.spec.ts:35:31
 
-    Expected: 401
-    Received: 403
-        at tests/bookingAuth.spec.ts:35:31
+   Line 35 (in that commit) is
+   expect(response.status()).toBe(HttpStatus.UNAUTHORIZED). The
+   test expected 401 Unauthorized, the server answered 403 Forbidden. The
+   request itself worked - the server really blocked the write without a
+   token - only the status code differs from the task. This is the known
+   deviation from assertion-notes.txt: not a bug in the code, and not an API
+   outage.
 
-Line 35 is expect(response.status()).toBe(HttpStatus.UNAUTHORIZED). The test expected 401 Unauthorized, the server answered 403 Forbidden. The request itself worked - the server answered and really did block the write without a token - only the status code differs from the task. This is the known deviation listed in assertion-notes.txt, not a bug in the code and not an API outage.
+Step 4 - was it random (flaky)?
+   No. The log also shows "Retry #1" with the same error. In CI Playwright
+   retries a failed test once. It failed the same way twice, so the failure
+   is stable. A flaky failure usually passes on the retry.
 
-Step 4 - was it a random (flaky) failure?
-No. The log also shows "Retry #1" with the same error. In CI Playwright retries a failed test once (retries: 1 in playwright.config.ts). It failed the same way twice, so the failure is stable. A flaky failure would usually pass on the retry.
-
-Step 5 - more detail in the artifact
-The HTML report (artifact "playwright-report") was uploaded even though the job failed, thanks to "if: always()". It was downloaded from run #2, unzipped and opened (index.html, or npx playwright show-report <folder>). The report confirms the same result as the log: the test bookingAuth.spec.ts:18 failed with Expected: 401, Received: 403. It also lists the POST test, which failed as expected because of test.fail() and so did not make the run red.
-Screenshot of the report overview: helpers/screenshots/ci-red-run-report.png
-It shows the summary "All 16, Passed 15, Failed 1, Flaky 0, Skipped 0" (run on 10/1/2026 at 12:51) and the only red test: bookingAuth.spec.ts:18, "PUT /booking/{id} without a token". The POST test (bookingCrud.spec.ts:68) is shown as passed - it is the test.fail() test that failed as expected. "Flaky 0" confirms the failed test also failed on its retry. Clicking the red test opens its details with Expected: 401, Received: 403.
+Step 5 - more detail in the report
+   The HTML report was uploaded even though the job failed (thanks to
+   "if: always()"). Downloaded from run #2 and opened, it confirms the log:
+   - summary: All 16, Passed 15, Failed 1, Flaky 0, Skipped 0
+     (2026-10-01, 12:51);
+   - the only red test: bookingAuth.spec.ts:18, Expected 401, Received 403;
+   - the POST test (bookingCrud.spec.ts:68) shows as passed - it is the
+     other test.fail test, and it failed as expected;
+   - "Flaky 0" confirms the red test failed on its retry too.
 
 Conclusion and fix
-The pipeline correctly turned red because a real assertion failed. Nothing is wrong with the API or the code; the expectation comes from the task text. The fix is to put test.fail() back, so the documented deviation is again reported as "expected to fail", and the next run on main is green again.
+   The pipeline turned red correctly, because a real check failed. Nothing is
+   wrong with the API or the code; the expectation comes from the task text.
+   The fix: put the test.fail mark back, so the known deviation is again
+   "expected to fail", and the next run on main is green again.

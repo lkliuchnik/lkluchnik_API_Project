@@ -15,9 +15,8 @@ test.describe('Booking auth', () => {
     await deleteBooking(request, bookingId, authToken);
   });
 
-  test('PUT /booking/{id} without a token returns 401', async ({ request }) => {
-    test.fail(); // known deviation: the API returns 403, see assertion-notes.txt
-
+  // known deviation: the API returns 403, see assertion-notes.txt
+  test.fail('PUT /booking/{id} without a token returns 401', async ({ request }) => {
     const response = await request.put(`/booking/${bookingId}`, { data: buildBooking() });
 
     expect(response.status()).toBe(HttpStatus.UNAUTHORIZED);

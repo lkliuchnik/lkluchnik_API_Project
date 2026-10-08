@@ -59,9 +59,8 @@ test.describe('Booking creation', () => {
     }
   });
 
-  test('POST /booking with valid data returns 201 and the new booking id', async ({ request }) => {
-    test.fail(); // known deviation: the API returns 200, see assertion-notes.txt
-
+  // known deviation: the API returns 200, see assertion-notes.txt
+  test.fail('POST /booking with valid data returns 201 and the new booking id', async ({ request }) => {
     const newBooking = buildBooking();
     const { status, body } = await createBooking(request, newBooking);
     createdId = body.bookingid;
