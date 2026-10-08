@@ -1,0 +1,414 @@
+AI reviews of the tests - Middle Stage 1
+========================================
+
+Middle Stage 1 evidence: AI was used to find duplication and maintainability
+problems, first in the old Junior tests and then in the new refactored code.
+This file keeps the prompts, what the AI found, and what we decided - and why.
+
+
+In short
+--------
+
+- Four review rounds. Rounds 1 and 2 checked the OLD code, rounds 3 and 4
+  checked the NEW code after the refactoring.
+- Every finding was checked against the code before a decision was made.
+  The learner confirmed every decision.
+- The most important findings:
+  - M1: a broken login could make the test.fail tests look fine;
+  - R2: the first version of the new client could hide a real API change;
+  - D8 and D6: two ideas that looked like good DRY, but would have made the
+    tests harder to read - rejected.
+- The two AI reviews in rounds 1 and 2 disagreed twice. How we decided is
+  explained at D9 and M9.
+
+
+Contents
+--------
+
+   The four rounds at a glance
+   How to read the decisions
+   Round 1 - duplication in the old code (D1-D10)
+   Round 2 - maintainability of the old code (M1-M13)
+   Round 3 - review of the new code (R1-R9)
+   Round 4 - final check before the commit (F1-F6)
+   What the AI said should stay - and we agree
+   Summary of decisions
+
+
+The four rounds at a glance
+---------------------------
+
+Round 1 - duplication
+   Code:      the old Junior tests (commit d3da450)
+   Tool:      a separate Claude Code sub-agent, prompt 1 below
+   Result:    10 findings (D1-D10)
+
+Round 2 - maintainability
+   Code:      the old Junior tests, at the same time as round 1
+   Tool:      a second, separate sub-agent, prompt 2 below
+   Result:    13 findings (M1-M13)
+
+Round 3 - the new code
+   Code:      the refactored code, before the commit
+   Tool:      the Claude Code /code-review command
+   Result:    9 findings (R1-R9): 5 fixed, 3 rejected, 1 accepted as a limit
+
+Round 4 - final check
+   Code:      the refactored code, after round 3
+   Tool:      /code-review again + a sub-agent looking from the refactoring
+              side, also checking every statement in these .txt files
+   Result:    6 code fixes (F1-F6) and several doc fixes; the rest was
+              already decided or not true
+
+In rounds 1 and 2 the agents could read only the code, not these .txt files.
+So they judged the code as a new team member would see it, without our
+explanations. They changed no files.
+
+
+How to read the decisions
+-------------------------
+
+Each finding has the same block:
+   Found:      what the AI saw (file and problem)
+   AI said:    what the AI suggested, if it is not obvious
+   Decision:   what we did
+   Why:        the reason, when it is not obvious
+
+Decision words:
+   ACCEPTED    done as the AI suggested
+   CHANGED     done, but in a different way - the "Why" says how
+   REJECTED    not done - the "Why" says why
+   FIXED       (rounds 3 and 4) a problem in the new code that was fixed
+
+
+Round 1 - duplication in the old code
+=====================================
+
+Prompt 1
+--------
+
+"Review these API tests and helpers for code duplication. Find every place
+where the same request pattern, setup step, header, value or assertion logic
+is repeated across functions or test files. For each duplication give: the
+exact locations (file:line), what is repeated, how many times, and one or two
+refactoring options (for example: a typed API client class with auth and base
+URL, a service per resource, typed interfaces for responses, factory
+functions, a shared assertion). For each option say what it costs: would it
+make the test harder to read, hide important steps, or create an
+over-generic helper? Also list duplication that you think should be KEPT as
+it is, and why (for example, explicit expected values inside tests)."
+
+
+D1. The same two lines in every request function
+   Found:     return { status, body: await readBody(response) } - 13 times.
+   AI said:   one private send() function, or a typed API client class.
+   Decision:  ACCEPTED - the client class.
+   Why:       the task asks for a client class, and the class is the natural
+              home for the base URL, the auth header and error handling.
+
+D2. The auth header built by hand
+   Found:     { Authorization: `Bearer ${token}` } - 3 times.
+   AI said:   build it in one place, but keep the token as an argument. A
+              client that adds the token by itself would hide which calls are
+              logged in - and auth.spec.ts tests exactly that.
+   Decision:  ACCEPTED as the AI said.
+
+D3. "request" passed into every function; products and users look alike
+   AI said:   (a) one service per resource, given to tests by a fixture;
+              (b) one generic ResourceService<T> for all resources.
+   Decision:  (a) ACCEPTED, (b) REJECTED.
+   Why:       (b) does not fit the real API - carts use other paths, our tests
+              never delete users, products have a protected list. It is our
+              example for "why too generic helpers hurt".
+
+D4. The test user written in several places
+   Found:     'emilys' and the .env fallback in 4 places.
+   Decision:  ACCEPTED - one file, test-data/credentials.ts. (Same as M4.)
+
+D5. Answers without types
+   Found:     every answer body is "any"; small types written inside tests.
+   AI said:   interfaces for products, users, carts, errors and the answer
+              shape. Do not force a strict "data or error" type - it would
+              make negative tests noisy.
+   Decision:  ACCEPTED as the AI said. (Same as M3.)
+
+D6. "Who am I" (GET /auth/me) repeated in 3 tests
+   AI said:   a fixture would hide a chaining step that the test shows on
+              purpose. Keep it.
+   Decision:  REJECTED - kept as it is.
+   Why:       "log in -> who am I -> my carts" is evidence for Junior Stage 4.
+
+D7. Tests import "test" from two different places
+   Found:     4 files from @playwright/test, 2 from our fixture file.
+   Decision:  ACCEPTED - all tests import from the fixture file.
+   Why:       the services come from there anyway. A test that does not ask
+              for a token does not log in, so nothing extra runs.
+
+D8. Status + error message checked together - 6 times
+   AI said:   a shared expectError(result, status, message) saves one line,
+              but hides two checks behind one name. Keep.
+   Decision:  REJECTED - kept as it is.
+   Why:       this was in our own first plan; the AI review changed our mind.
+              Example for "when NOT to apply DRY".
+
+D9. The cart totals check - in 2 places
+   AI said:   keep. The second test has its own expected numbers (catalog
+              price x 2); a shared helper would make it weaker.
+   Decision:  CHANGED.
+   Why:       the general rules moved to assertions/cartAssertions.ts. The
+              second test calls the shared check as an EXTRA check and keeps
+              its own numbers. So nothing is weaker, and the task's
+              "assertions layer" has one real member.
+
+D10. Two factories with the same pattern
+   AI said:   a generic factory builder would be too clever for two small
+              functions.
+   Decision:  ACCEPTED - two factories stay. buildUser() got a "role" field
+              with the default 'user', so buildUser({ role: 'admin' }) works.
+
+
+Round 2 - maintainability of the old code
+=========================================
+
+Prompt 2
+--------
+
+"Review these API tests for maintainability. Look for: (1) hardcoded test
+data - ids, credentials, URLs, messages, magic numbers - and say which ones
+are a real risk and which are fine as explicit expected values; (2) fragile
+assertions - checks that can fail for reasons unrelated to the behaviour
+under test (timing, server clock, shared data, ordering, floating point,
+parallel runs); (3) poor structure - missing types (any), responsibilities
+mixed in one place (requests, test data, assertions), unclear names, tests
+that do too much or too little. For each problem give the exact location
+(file:line), why it matters, a concrete fix, and a severity (high / medium /
+low). Do not suggest changes only for style."
+
+
+M1. The login is not checked (high)
+   Found:     if the login failed, the token was "undefined" and the tests
+              went on. In a test.fail test any error counts as "the expected
+              failure", so a broken login would look like "the known problem
+              is still there".
+   Decision:  ACCEPTED - the fixture checks the login status and the token,
+              with a clear message.
+   Checked:   all tests run with a wrong password: 3 normal tests failed
+              with "login as emilys in the authToken fixture", so the run was
+              red. The 2 test.fail tests that use the token still showed as
+              passed - test.fail accepts any failure. The real protection is
+              the normal tests that use the same login.
+
+M2. Setup steps are not checked (medium)
+   Found:     GET /auth/me (checked in only 1 of 3 tests), GET /users/1, the
+              catalog products - status not checked; "the other user"
+              (my id + 1) never checked to exist.
+   AI said:   check them; also add a passing test next to each test.fail test
+              that checks what the API answers today (500, 200, 201).
+   Decision:  CHANGED - the setup steps are checked ("precondition:"
+              messages). The extra tests were REJECTED.
+   Why:       test.fail already turns red when the API changes, so the extra
+              tests would repeat every problem test without new information.
+
+M3. Every answer is "any" (medium)
+   Decision:  ACCEPTED - TypeScript interfaces. A schema library (zod) was
+              also suggested and REJECTED for now: checking answers against a
+              schema at run time is contract testing, Middle Stage 3.
+
+M4. The test user in several places (medium)
+   Decision:  ACCEPTED - see D4.
+
+M5. Response time under 3000 ms against a public API (medium)
+   AI said:   take the limit from .env, add a tag, or measure several calls.
+   Decision:  CHANGED - the test stays (response time is a Junior Stage 4
+              topic); the limit is a named constant; the measured time is
+              shown in the HTML report.
+   Why:       the other ideas are too much for one generous limit.
+
+M6. "deletedOn" compared with our own clock (medium)
+   Found:     "deleted less than 60 s ago" fails if our clock is ahead, and
+              always passes if the server clock is ahead.
+   Decision:  CHANGED - a real date, and the difference in either direction.
+              (Round 3, R5, tightened the allowed difference to 60 s.)
+   Why:       reading the server's own time from the answer headers was
+              rejected - the client would return headers for one check.
+
+M7. Date.now() for unique names, while tests run in parallel (low)
+   Decision:  ACCEPTED - factories use a random id (crypto.randomUUID).
+
+M8. Weak pagination checks (low)
+   Found:     "no shared products" passes even if page 2 is empty; one check
+              used > where >= was right; one check repeated another.
+   Decision:  ACCEPTED - both pages must have 10 items, >= is used, the
+              repeated check is gone.
+
+M9. 99999 written twice - as the id and inside the expected message (low)
+   AI said:   one constant, the message built from it.
+   Note:      round 1 said the opposite: keep messages as plain text.
+   Decision:  CHANGED - one constant, but the message text stays in the test.
+   Why:       NON_EXISTENT_ID is one constant, but the message text is still
+              written in the test: `Product with id '${NON_EXISTENT_ID}' not
+              found`. So the message format is still checked word for word.
+
+M10. Expected values copied from input values (low)
+   Decision:  CHANGED - named constants (newPrice, newLastName) in the CRUD
+              and user tests.
+   Why:       the cart test keeps the plain numbers 3 and 2 on purpose: they
+              are its own expected values (see D9).
+
+M11. find() can return nothing (low)
+   Decision:  ACCEPTED - a missing cart line gives a clear error. (Round 4,
+              F5, made this a plain "if" check that TypeScript understands.)
+
+M12. Log in once per worker instead of once per test (low)
+   Decision:  REJECTED.
+   Why:       Playwright's request helper lives per test, so a shared login
+              would need its own setup - more code to save at most 4 of the
+              5 logins per run. No rate limit has been seen.
+
+M13. A hidden "?limit=5"; the smoke test skips the helpers (low)
+   Decision:  ACCEPTED - the limit is a parameter; the smoke test uses the
+              client and the named status like the other tests.
+
+
+Round 3 - review of the new code
+================================
+
+How:       the Claude Code /code-review command, run on the refactored code
+           before the commit. No custom prompt - the command has its own
+           instructions (real bugs first, then cleanups).
+Why:       rounds 1 and 2 reviewed the OLD code. About 270 new lines had been
+           read only by their author.
+Checked:   every finding against the code; R2, R3 and R9 also by running
+           the tests.
+
+R1. Setup checks inside test.fail tests cannot turn the run red
+   Found:     a failed "precondition:" check or a failed login inside a
+              test.fail test is also "the expected failure". Same limit as M1.
+   Options:   (a) accept it and write it down;
+              (b) add a normal test next to each test.fail test that checks
+              what the API answers today (500, 200, 201).
+   Decision:  (a) - chosen by the learner.
+   Why:       normal tests already use the login, /auth/me and the products,
+              so a broken step still turns the run red. Only GET /users/{id}
+              is used in test.fail tests alone. (b) would add 4-5 repeated
+              tests, and they would call API bugs "correct" - against the
+              main rule of this project.
+
+R2. The new client stops with an error when the answer is not JSON (high)
+   Found:     the old code kept a plain-text answer; the new client threw an
+              error. Inside a test.fail test that error is "the expected
+              failure". If DummyJSON fixed the forged-token bug and answered
+              401 as plain text, the test would stay green and nobody would
+              notice the change.
+   Decision:  FIXED - a non-JSON answer is kept as text in body.message, an
+              empty answer becomes {}. Only "no answer at all" is an error.
+   Checked:   an HTML 404 page now gives status 404 and no error.
+
+R3. A "/" at the end of BASE_URL gives "//products"
+   Decision:  FIXED - the client removes it.
+   Checked:   all tests pass with BASE_URL=https://dummyjson.com/.
+
+R4. Let Playwright add the base URL; remove it from the client
+   Decision:  REJECTED.
+   Why:       the task asks for a client "with ... base URL".
+
+R5. "deletedOn" within 5 minutes is too loose
+   Found:     the M6 change allowed 5 minutes either way, so an old or wrong
+              date would pass.
+   Decision:  FIXED - 60 seconds either way.
+
+R6. An empty token ("") is sent with no auth header at all
+   Decision:  FIXED - the header is left out only when there is no token.
+
+R7. A network error loses the original error object
+   Decision:  REJECTED.
+   Why:       Playwright's message already has the details; keeping the
+              original error would need a newer TypeScript setting.
+
+R8. Setup requests one after another instead of all at once
+   Decision:  REJECTED.
+   Why:       it saves about 200 ms; one request per line is easier to read,
+              and the chain of requests is what Junior Stage 4 asks to show.
+
+R9. The number of pages was calculated but not checked
+   Found:     after M8 the page count was only printed - but the task asks to
+              check it.
+   Decision:  FIXED - a real check: the page after the last one is empty. If
+              the page count were too small, that page would have products.
+
+
+Round 4 - final check before the commit
+=======================================
+
+How:       two read-only reviews at the same time: /code-review again, and a
+           sub-agent looking from the refactoring side (leftover repetition,
+           too much or too little abstraction, typing gaps, and every
+           statement in these .txt files against the code). Nothing was
+           changed during the review; the learner chose what to fix.
+
+Fixed in the code
+   F1  zod was installed but never used, while these docs say it was
+       rejected. Removed - it can come back in Middle Stage 3.
+   F2  Reading the answer produced a hidden "any". Now it is "unknown", with
+       one visible conversion and a comment in ApiClient.
+   F3  NewUser repeated 6 of the 7 fields of User. Now User is NewUser + id.
+   F4  An empty "AUTH_PASSWORD=" in .env sent an empty password. Now an empty
+       value also falls back to the default.
+   F5  The cart test used "line1!" ("trust me, it is there"). Now a plain if
+       check, after which TypeScript knows the line exists.
+   F6  auth.spec.ts repeated the number 5 four times - now one constant; one
+       more setup step got its "precondition:" message.
+
+Fixed in these docs
+   Wrong numbers (line count, number of logins), test titles, the number of
+   chains (now eight), and explanations for the smoke test and httpStatus.ts.
+
+Not changed
+   - Setup checks inside test.fail, login per test, parallel setup requests,
+     the original network error: already decided (R1, M12, R8, R7).
+     /code-review offered one more way for R1: call test.fail() inside the
+     test AFTER the setup checks. That would work, but the mentor asked to
+     put the mark on the test declaration, so we keep it there.
+   - "The smoke test output never reaches the HTML report" - not true, the
+     report shows it.
+   - "The old code had 4 types written inside tests, not 5" - not true,
+     commit d3da450 has 5.
+   - "An empty catalog would give a negative page number" - the catalog has
+     194 products; not worth a special case.
+   - The comments "only the fields the tests use" in models/ are not exact -
+     left as they are (learner's choice).
+   - The Content-Type and Accept headers stay in playwright.config.ts:
+     Playwright adds them to every request already.
+
+
+What the AI said should stay - and we agree
+===========================================
+
+- Exact expected values in the tests: error messages, prices, quantity 3.
+- Product ids 1 and 2 in the cart test - their prices are read live.
+- The page arithmetic (skip, number of pages) - it is what the test checks.
+- expect(status).toBe(...) written in every test.
+- The one-line "known deviation" comment above each test.fail test.
+- toBeCloseTo(..., 2) for money.
+
+
+Summary of decisions
+====================
+
+Rounds 1 and 2 (23 findings about the old code)
+   ACCEPTED (14)   D1 D2 D3a D4 D5 D7 D10 M1 M3 M4 M7 M8 M11 M13
+                   (D4 = M4 and D5 = M3: the same problem found twice)
+   CHANGED (6)     D9 M2 M5 M6 M9 M10
+   REJECTED (3)    D6 D8 M12
+                   (also D3b, and the extra ideas in M2, M3, M5, M6)
+
+Round 3 (9 findings about the new code)
+   FIXED (5)       R2 R3 R5 R6 R9
+   REJECTED (3)    R4 R7 R8
+   ACCEPTED AS A LIMIT (1)   R1
+
+Round 4 (final check)
+   FIXED           F1-F6 in the code, plus the docs
+
+The accepted findings shaped the refactoring. The rejected ones are the
+examples for "when NOT to apply DRY" in refactoring-decisions.txt.

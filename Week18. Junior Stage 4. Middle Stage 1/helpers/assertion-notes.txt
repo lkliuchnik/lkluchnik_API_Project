@@ -1,86 +1,88 @@
-Assertion choices and known deviations
-======================================
+What the tests check, and where the API is wrong
+================================================
 
-Junior Stage 4. What the tests check, and where DummyJSON does not do
-what the task expects.
+This file explains the checks in the tests: which business rules they
+protect, why some checks are written the way they are, and the 5 places where
+DummyJSON does not do what the task asks.
 
 
 In short
 --------
 
-- 20 tests. 15 pass normally. 5 are marked test.fail() because DummyJSON
-  behaves differently from the task.
-- The tests check business rules (correct totals, correct owner, correct
+- 21 tests: 16 pass normally, 5 are marked test.fail.
+- A test.fail test still checks exactly what the task asks. It is marked
+  because DummyJSON answers differently. Nothing was changed to "make a test
+  green".
+- The tests check business rules (correct totals, the right owner, the right
   page size), not only the status code.
-- Nothing is changed to "make a test green". If the API is wrong, the test
-  says so.
 
 
 The main rule
 -------------
 
-Every assertion follows the task text, the same as in week 17.
+Every check follows the task text, the same as in week 17.
 
-If DummyJSON does something else:
-- the assertion is NOT changed,
-- the test is marked with test.fail(),
-- the difference is described below.
+When DummyJSON does something else:
+- the check is NOT changed,
+- the test is declared as test.fail('title', ...) instead of test('title', ...),
+- a one-line comment above the test names the problem,
+- the problem is described below in "Known deviations".
 
-What test.fail() does:
-- The test fails as expected  -> Playwright shows it as passed.
-- The test suddenly passes    -> Playwright shows it as failed.
-The second case means DummyJSON has changed, and this file must be updated.
+What test.fail does:
+- the test fails, as expected   -> Playwright shows it as passed,
+- the test suddenly passes      -> Playwright shows it as failed.
+
+The second case means DummyJSON was fixed, and this file must be updated.
 
 
 Known deviations - 5 tests that fail on purpose
 -----------------------------------------------
 
 1. The full CRUD flow
-   Test:    productCrud.spec.ts - "full CRUD flow: create, read, update,
-            delete, verify absence"
+   Test:    productCrud.spec.ts
+            "full CRUD flow: create, read, update, delete, verify absence"
    Task:    create a product, then read, update and delete it.
-   API:     creating works (201, new id such as 195), but the product is
-            not saved. Read, update and delete on that id all give 404.
-   Note:    the read, update and delete checks use expect.soft. The test
-            does not stop at the first problem, so the report shows every
-            step that went wrong.
-            The last step ("product is gone", 404) passes - but only because
-            the product never existed.
+   API:     create works (201, a new id like 195), but the product is not
+            saved. Read, update and delete on that id all answer 404.
+   Note:    the read, update and delete steps use expect.soft, so the test
+            does not stop at the first problem and the report shows every
+            step that went wrong. The last step ("the product is gone", 404)
+            passes - but only because the product never existed.
 
 2. A change is saved
-   Test:    userData.spec.ts - "create a user, change it, and the change
-            persists"
-   Task:    after changing a user, reading it again shows the change.
-   API:     creating works (201), but update and read on the new id give 404.
+   Test:    userData.spec.ts
+            "create a user, change it, and the change persists"
+   Task:    after a user is changed, reading it again shows the change.
+   API:     create works (201), but update and read on the new id answer 404.
 
 3. No duplicates
-   Test:    userData.spec.ts - "creating a user with an existing username and
-            email fails"
-   Task:    creating the same user twice must fail.
-            The test expects 409 Conflict - the usual code for "already exists".
-   API:     201 - the duplicate is created. There is no check for unique
-            usernames or emails.
+   Test:    userData.spec.ts
+            "creating a user with an existing username and email fails"
+   Task:    creating the same user twice must fail. The test expects
+            409 Conflict, the usual code for "already exists".
+   API:     201 - the duplicate is created. Usernames and emails are not
+            checked for being unique.
 
 4. A forged token
-   Test:    auth.spec.ts - "a real token but a forged signature is rejected
-            with 401"
-   Task:    access without valid authorization is rejected.
-            A forged token is not valid, so we expect 401 Unauthorized.
+   Test:    auth.spec.ts
+            "GET /auth/products with a real token but a forged signature is
+            rejected with 401"
+   Task:    access without a valid login is rejected - 401 Unauthorized.
    API:     500 "invalid signature".
    Why it matters:
-            The request is blocked - no data comes back. But 500 means
-            "the server crashed", not "you are not allowed". Monitoring would
-            report this as a server outage instead of a bad request.
-            This is a real defect.
+            No data comes back, so access is blocked. But 500 means "the
+            server crashed", not "you are not allowed". Monitoring would see
+            a server failure instead of a bad request. This is a real defect.
    Good to know:
-            A random text as token ("not-a-real-token") gets the correct
-            401 "Invalid/Expired Token!". Only tokens that look like a real
-            token get 500. (A real token - JWT - is three parts joined with
-            dots. The last part is the signature that proves it is genuine.)
+            A random text as token ("not-a-real-token") gets the correct 401.
+            Only a token that looks real gets 500. A real token (JWT) has
+            three parts joined by dots; the last part is the signature that
+            proves the token is genuine. The test changes only that part.
 
 5. One user reads another user's data (optional topic)
-   Test:    auth.spec.ts - "user A cannot read the carts of user B"
-   Task:    user A must not see user B's data. We expect 403 Forbidden.
+   Test:    auth.spec.ts
+            "user A cannot read the carts of user B"
+   Task:    user A must not see user B's data - 403 Forbidden.
    API:     200 - user A gets user B's carts. Any logged-in user can read
             anyone's carts.
 
@@ -91,64 +93,81 @@ Checked by hand, not written as a test
 Expired token
    A token made to live 1 minute and used after 70 seconds gets
    401 "Token Expired!". This is correct.
-   No test was added: it would make every run wait more than a minute,
-   and expired tokens are a Stage 2 topic (done in week 17).
+   No test: it would make every run wait more than a minute, and expired
+   tokens were already covered in week 17.
 
 
 Business rules - more than "200 OK"
 -----------------------------------
 
-A status 200 only says "the server answered". These checks make sure the
-answer is also correct.
+A 200 only says "the server answered". These checks make sure the answer is
+also right.
 
 Cart totals (carts.spec.ts)
    - each line: total = price x quantity
-   - cart total = sum of all lines
+   - cart total = sum of all line totals
    - totalQuantity = sum of all quantities
    - totalProducts = number of lines
-   - discountedTotal is never bigger than total
+   - the discounted total is never bigger than the total
 
 The carts belong to me (carts.spec.ts)
    Every cart I get back has my user id.
 
 Catalog prices (carts.spec.ts)
-   A new cart uses the same prices as the product catalog, and its totals
-   are calculated from those prices.
+   A new cart uses the prices from the product catalog, and its totals are
+   calculated from those prices.
 
-Update changes only what was sent (productCrud.spec.ts)
-   After changing the price, the title and category are still the same.
+An update changes only what was sent (productCrud.spec.ts)
+   After the price is changed, the title and category are still the same.
 
-Delete says what it did (productCrud.spec.ts)
-   isDeleted is true, the id is the same, and deletedOn is a time from the
-   last minute.
+A delete says what it did (productCrud.spec.ts)
+   isDeleted is true, the id is the same, and deletedOn is a real date within
+   1 minute of now (in either direction - the server clock can be a little
+   ahead of ours).
 
-Pagination (pagination.spec.ts)
+Pages (pagination.spec.ts)
    - a page has exactly as many items as we asked for
    - the last page has only the items that are left
+   - the page after the last one is empty - so the number of pages is right
    - two pages never contain the same product
 
+A new admin keeps the role (userData.spec.ts)
+   A user created with role "admin" comes back with role "admin".
+
 Helpful errors (auth, carts, productCrud)
-   A rejected request gives the right status, a clear message, and no data.
+   A rejected request gives the right status, a clear message and no data.
    Examples: "Access Token is required", "Invalid credentials",
    "Product with id '99999' not found".
 
 
-Why these kinds of assertions
------------------------------
+Why the checks are written this way
+-----------------------------------
 
 toBeCloseTo(x, 2) for money
-   In JavaScript 9.99 x 3 is 29.970000000000002, not 29.97.
-   Comparing to 2 decimal places is the normal way to compare money.
+   In JavaScript 9.99 x 3 is 29.970000000000002, not 29.97. Comparing to two
+   decimal places is the normal way to compare money.
 
 toBeUndefined() for "no data in an error"
-   Checks that an error response has no products and no token in it.
+   Checks that an error answer has no products and no token in it.
 
-toEqual([]) for "pages do not overlap"
-   If it fails, the report shows exactly which product ids are on both pages.
+toEqual([]) for "pages do not overlap" and "the next page is empty"
+   If it fails, the report shows exactly which products are wrong.
 
 expect.soft only in the CRUD and "change is saved" tests
-   So one test can show all the steps that went wrong.
-   Everywhere else a normal expect stops at the first problem - easier to read.
+   So one test can show all the steps that went wrong. Everywhere else a
+   normal expect stops at the first problem, which is easier to read.
 
 Response time under 3000 ms (pagination.spec.ts)
-   Only a rough check that nothing hangs. Not a performance test.
+   Only a rough check that nothing hangs - not a performance test. The time
+   that was measured is shown in the HTML report, also when the test passes.
+
+"precondition:" messages on setup steps
+   Steps that only prepare a test (GET /auth/me, GET /users/1, the catalog
+   products) check their own status. The message says it is a precondition,
+   so a broken setup step is easy to tell apart from the real check.
+
+   Limit: inside a test.fail test, a failed precondition is also "the
+   expected failure", so on its own it does not turn the run red. In
+   practice the run still turns red, because normal tests use the same
+   steps: login, GET /auth/me and the products. Only GET /users/{id} is
+   used in test.fail tests alone. We accept this (ai-review.txt, R1).

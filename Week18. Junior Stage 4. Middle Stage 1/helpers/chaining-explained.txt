@@ -1,106 +1,191 @@
 How the tests chain data between requests
 =========================================
 
-Junior Stage 4 evidence: how a test uses data from one response in the
-next request.
+Junior Stage 4 evidence: how a test takes data from one answer and uses it in
+the next request.
 
 
 In short
 --------
 
 A chained test does not type in values like "user id 1" or "194 products".
-It asks the API first and uses the answer in the next request - the same
-way a real app does.
+It asks the API first and uses the answer in the next request - the same way
+a real app works.
+
+There are eight chains in the project:
+
+   1. log in -> who am I -> my carts
+   2. read a product -> change it -> delete it
+   3. create -> read -> update -> delete -> check it is gone
+   4. a real user -> create the same user again
+   5. catalog prices -> a new cart
+   6. total count -> the last page -> the page after it
+   7. who am I -> another user -> their carts
+   8. create a user -> change it -> read it again
 
 
 Why it matters
 --------------
 
-With a hardcoded value:
+With a value typed into the test:
    - the test can pass even when an earlier step is broken,
    - the test breaks as soon as the test data changes.
 
-With a chained value:
+With a value taken from an earlier answer:
    - the test fails exactly at the step that is wrong,
    - the test keeps working when the data changes.
 
 
-The six chains in this project
-------------------------------
+How to read the chains below
+----------------------------
 
-1. Log in -> who am I -> my carts                       (carts.spec.ts)
+Each chain shows the requests in order. On the right:
+   gives    what we take from the answer
+   uses     what we put into the request
+   sends    what we put into the request body
+   checks   what the test checks in the answer
 
-   POST /auth/login            gives  accessToken
-   GET  /auth/me               uses   the token
-                               gives  my user id
-   GET  /auth/carts/user/{id}  uses   my user id and the token
-
-   The login is done by the authToken fixture (fixtures/api.fixture.ts),
-   so every test gets a fresh token.
-   Then the test checks that every cart has my user id and correct totals.
+Where a chain needs a login, the token comes from the authToken fixture
+(fixtures/api.fixture.ts): every test that asks for it gets a fresh token.
 
 
-2. Read a product -> change it -> delete it              (productCrud.spec.ts)
+1. Log in -> who am I -> my carts
+---------------------------------
 
-   GET    /products/1   gives  price, title, category
-   PUT    /products/1   sends  the old price + 1
-                        checks the new price, and that title and category
-                        did not change
-   DELETE /products/1   checks the answer is about the same product
+Test:  carts.spec.ts
+       "the logged-in user sees only their own carts, with correct totals"
 
-   The new price is worked out from the price the API returned.
-   It is not typed into the test.
-
-
-3. Create -> read -> update -> delete -> check it is gone (productCrud.spec.ts)
-
-   POST   /products/add   gives  the new product id
-   GET    /products/{id}  uses   that id
-   PUT    /products/{id}  uses   that id
-   DELETE /products/{id}  uses   that id
-   GET    /products/{id}  must answer 404
-
-   The id is saved after the first step and used in all the other steps.
-   Each step is a test.step, so the report shows the steps by name.
+   POST /auth/login             gives   a token (done by the fixture)
+   GET  /auth/me                uses    the token
+                                gives   my user id
+   GET  /auth/carts/user/{id}   uses    my user id and the token
+                                checks  every cart has my user id and correct
+                                        totals
 
 
-4. A real user -> try to create the same user again      (userData.spec.ts)
+2. Read a product -> change it -> delete it
+-------------------------------------------
 
-   GET  /users/1     gives  a real username and email
-   POST /users/add   sends  the same username and email
+Test:  productCrud.spec.ts
+       "each CRUD step on an existing product returns the expected data"
 
-   The test does not guess which username exists - it asks the API.
+   GET    /products/1   gives   price, title, category
+   PUT    /products/1   sends   the old price + 1
+                        checks  the new price; title and category did not
+                                change
+   DELETE /products/1   checks  the answer is about the same product
 
-
-5. Catalog prices -> a new cart                          (carts.spec.ts)
-
-   GET  /auth/me      gives  my user id (the owner of the new cart)
-   GET  /products/1   gives  price of product 1
-   GET  /products/2   gives  price of product 2
-   POST /carts/add    sends  my user id and the two product ids
-
-   The expected total is worked out from the catalog prices:
-   price of product 1 x 2 + price of product 2.
-   This proves the cart really uses the catalog prices.
+The new price is worked out from the price the API returned. It is not typed
+into the test.
 
 
-6. Total count -> the last page                          (pagination.spec.ts)
+3. Create -> read -> update -> delete -> check it is gone
+---------------------------------------------------------
 
-   GET /products?limit=10&skip=0       gives  total
-   GET /products?limit=10&skip=<last>  where  last = (number of pages - 1) x 10
-                                              number of pages = total / 10,
-                                              rounded up
+Test:  productCrud.spec.ts
+       "full CRUD flow: create, read, update, delete, verify absence"
 
-   The test does not type in "194 products". It reads the total from the
-   first page and works out where the last page starts.
+   POST   /products/add    gives   the new product id
+   GET    /products/{id}   uses    that id
+   PUT    /products/{id}   uses    that id
+   DELETE /products/{id}   uses    that id
+   GET    /products/{id}   checks  the answer is 404
+
+The id is saved after the first step and used in all the other steps. Each
+step is a test.step, so the report shows the steps by name.
+
+This chain fails: DummyJSON does not save the new product, so the "read"
+step already gets 404. The test is marked test.fail (assertion-notes.txt).
 
 
-What happens because DummyJSON does not save data
--------------------------------------------------
+4. A real user -> create the same user again
+--------------------------------------------
 
-Chains 1, 2, 4, 5 and 6 work. They only read real data or check the answer
-to the request itself.
+Test:  userData.spec.ts
+       "creating a user with an existing username and email fails"
 
-Chain 3 needs the new product to really exist. It does not, so the test
-fails at the "read" step. That test is marked test.fail() - see
-assertion-notes.txt.
+   GET  /users/1     gives   a real username and email
+   POST /users/add   sends   the same username and email
+                     checks  the answer is 409 Conflict
+
+The test does not guess which username exists - it asks the API.
+DummyJSON creates the duplicate anyway, so this test is marked test.fail.
+
+
+5. Catalog prices -> a new cart
+-------------------------------
+
+Test:  carts.spec.ts
+       "a new cart uses catalog prices and calculates the totals"
+
+   GET  /auth/me      gives   my user id (the owner of the new cart)
+   GET  /products/1   gives   the price of product 1
+   GET  /products/2   gives   the price of product 2
+   POST /carts/add    sends   my user id, product 1 x 2, product 2 x 1
+                      checks  the cart uses those prices, and
+                              total = price 1 x 2 + price 2
+
+The expected total is worked out from the catalog prices. This proves the cart
+really uses them.
+
+
+6. Total count -> the last page -> the page after it
+----------------------------------------------------
+
+Test:  pagination.spec.ts
+       "the page count is right: the last page has the remaining items, the
+       next page is empty"
+
+   GET /products?limit=10&skip=0        gives   total
+   GET /products?limit=10&skip=<last>   checks  only the remaining items
+   GET /products?limit=10&skip=<next>   checks  the page is empty
+
+   where   number of pages = total / 10, rounded up
+           last = (number of pages - 1) x 10
+           next = number of pages x 10
+
+The test does not type in "194 products". It reads the total from the first
+page and works out where the last page starts. The empty page after it proves
+the number of pages is right.
+
+
+7. Who am I -> another user -> their carts
+------------------------------------------
+
+Test:  auth.spec.ts
+       "user A cannot read the carts of user B"
+
+   GET /auth/me                gives   my user id
+   GET /users/{my id + 1}      checks  the other user exists
+   GET /auth/carts/user/{id}   uses    the other user's id and MY token
+                               checks  the answer is 403 Forbidden
+
+The other user is found from my own id, not typed in. The chain works, but
+DummyJSON gives me the other user's carts (200), so the test is marked
+test.fail.
+
+
+8. Create a user -> change it -> read it again
+-----------------------------------------------
+
+Test:  userData.spec.ts
+       "create a user, change it, and the change persists"
+
+   POST /users/add      gives   the new user id
+   PUT  /users/{id}     uses    that id, sends a new last name
+   GET  /users/{id}     uses    that id
+                        checks  the new last name is saved
+
+The same chain as 3, but for users. DummyJSON does not save the new user, so
+the update and the read answer 404. The test is marked test.fail.
+
+
+Summary: which chains pass
+--------------------------
+
+Pass:            1, 2, 5, 6 - they read real data, or check the answer to the
+                 request itself.
+test.fail:       3 - the new product is not saved.
+                 4 - the duplicate is created.
+                 7 - the other user's carts are given out.
+                 8 - the new user is not saved.

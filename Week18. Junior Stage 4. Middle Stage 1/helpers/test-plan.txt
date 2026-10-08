@@ -1,126 +1,275 @@
-Test plan - Week 18: Junior Stage 4 (DummyJSON)
-===============================================
+Test plan - Week 18
+===================
 
-API under test: https://dummyjson.com
-Why this API was chosen and how it behaves: docs/session-log.md in the
-repository root.
+Junior Stage 4 (first realistic CRUD tests) and Middle Stage 1 (refactoring).
+API under test: DummyJSON - https://dummyjson.com
+
+Start here. This file says what is in the project, which task is done where,
+and where to find the evidence. The other files go into details.
 
 
 In short
 --------
 
-- 20 tests in 6 files, all green locally.
-- 5 of them are marked test.fail(): DummyJSON does not do what the task
-  expects. See assertion-notes.txt.
-- This code is the "before" state for Middle Stage 1 (refactoring).
-  Middle Stage 1 will be added to this file later.
+- 21 tests in 6 files. All of them are green.
+- 16 tests pass in the normal way.
+- 5 tests are marked "expected to fail" (test.fail), because DummyJSON does
+  not do what the task asks. They are listed in assertion-notes.txt.
+- Junior Stage 4 was written first, in a simple style. That version is saved
+  in git as commit d3da450 - the "before" state.
+- Middle Stage 1 split the same tests into layers: client, services, models,
+  test data, assertions. That is the "after" state.
+- Why DummyJSON was chosen: docs/session-log.md in the repository root.
+
+
+The other files in helpers/
+---------------------------
+
+assertion-notes.txt
+   What the tests check, and the 5 places where DummyJSON behaves wrongly.
+
+chaining-explained.txt
+   How a test takes data from one answer and uses it in the next request.
+
+refactoring-decisions.txt
+   Middle Stage 1: the layers, before and after, and when we did NOT remove
+   repetition on purpose.
+
+ai-review.txt
+   Middle Stage 1: what the AI reviews found and what we did with each finding.
+
+screenshots/
+   Pictures of the CI runs on GitHub.
+
+
+Words used in these files
+-------------------------
+
+test.fail
+   A Playwright mark: "this test is expected to fail". If it fails, the run
+   stays green. If it suddenly passes, the run turns red - a sign that the
+   API has changed.
+
+deviation
+   A place where the API does not do what the task asks. The test still
+   checks what the task asks, and is marked test.fail.
+
+fixture
+   Something Playwright prepares before a test and hands to it. Here: the
+   ready-to-use services ("api") and a fresh login token ("authToken").
+
+client, service, model
+   The three code layers. The client sends HTTP requests. A service has one
+   method for each endpoint of one resource (products, users...). A model is
+   a TypeScript description of the data that is sent or received.
+
+factory
+   A function that makes new test data with sensible defaults, for example
+   buildUser({ role: 'admin' }).
+
+precondition
+   A step that only prepares the test (for example "who am I?"). Its status is
+   checked with a message that starts with "precondition:".
+
+chain
+   A test where the answer of one request is used in the next request.
+
+
+How to run
+----------
+
+In the folder "Week18. Junior Stage 4. Middle Stage 1":
+
+   npm ci                    install the packages
+   npx tsc --noEmit          check the TypeScript types
+   npx playwright test       run all tests
+   npm run test:report       open the HTML report of the last run
+
+Settings come from .env (copy .env.example). Without .env the tests use the
+public DummyJSON address and the demo user from the DummyJSON docs.
+
+CI runs the same steps on GitHub:
+   .github/workflows/week18-junior4-middle1.yml (in the repository root)
+It starts only when something in this folder or in that file changes.
 
 
 Project tree
 ------------
 
     Week18. Junior Stage 4. Middle Stage 1/
-    |-- .env.example                 settings template (the real .env is not in git)
+    |-- .env.example               settings template (the real .env is not in git)
     |-- .gitignore
-    |-- .vscode/extensions.json      recommends the Playwright extension
-    |-- package.json
-    |-- package-lock.json
-    |-- tsconfig.json
-    |-- playwright.config.ts         API address and settings
+    |-- .vscode/extensions.json    recommends the Playwright extension
+    |-- package.json, package-lock.json, tsconfig.json
+    |-- playwright.config.ts       API address and Playwright settings
+    |
+    |-- api/
+    |   `-- ApiClient.ts           sends the requests
+    |-- services/                  one class per resource
+    |   |-- AuthService.ts         login, "who am I"
+    |   |-- ProductService.ts
+    |   |-- UserService.ts
+    |   `-- CartService.ts
+    |-- models/                    TypeScript interfaces
+    |   |-- common.ts              the answer shape, error body, page fields
+    |   |-- auth.ts, product.ts, user.ts, cart.ts
+    |-- assertions/
+    |   `-- cartAssertions.ts      the cart totals rules
     |-- fixtures/
-    |   `-- api.fixture.ts           logs in and gives tests a token
-    |-- helpers/
-    |   |-- dummyApi.ts              functions that send the requests
-    |   |-- test-plan.txt            this file
-    |   |-- assertion-notes.txt      what is checked, and the known deviations
-    |   `-- chaining-explained.txt   how tests pass data between requests
+    |   `-- api.fixture.ts         gives tests the services and a token
     |-- test-data/
-    |   |-- httpStatus.ts            status codes with names
-    |   |-- productFactory.ts        makes new product data
-    |   `-- userFactory.ts           makes new user data
-    `-- tests/
-        |-- smoke.spec.ts            the project works - GET /test
-        |-- productCrud.spec.ts      create, read, update, delete
-        |-- auth.spec.ts             access control and login errors
-        |-- pagination.spec.ts       pages of products
-        |-- userData.spec.ts         saved changes and duplicates
-        `-- carts.spec.ts            chained requests and cart totals
+    |   |-- userFactory.ts         buildUser()
+    |   |-- productFactory.ts      buildProduct()
+    |   |-- credentials.ts         the test user (from .env)
+    |   |-- constants.ts           an id that does not exist
+    |   `-- httpStatus.ts          status codes with names
+    |-- tests/
+    |   |-- smoke.spec.ts          does the API answer at all
+    |   |-- productCrud.spec.ts    create, read, update, delete
+    |   |-- auth.spec.ts           access control, login errors
+    |   |-- pagination.spec.ts     pages of products
+    |   |-- userData.spec.ts       admin user, saved changes, duplicates
+    |   `-- carts.spec.ts          chained requests, cart totals
+    `-- helpers/                   documentation only (this folder)
 
-CI: .github/workflows/week18-junior4-middle1.yml
-It runs only when something in this folder changes.
 
+Junior Stage 4 - the practice tasks
+===================================
 
-The five practice tasks
------------------------
-
-1. A complete CRUD flow for one resource
+Task 1. A complete CRUD flow for one resource
    File:    productCrud.spec.ts
    Test:    "full CRUD flow: create, read, update, delete, verify absence"
             create -> read -> update -> delete -> check it is gone (404)
-   Result:  test.fail() - the new product is not saved (deviation 1).
-   Extra:   "each CRUD step on an existing product returns the expected data"
-            read -> update -> delete on product 1. Passes.
-            Shows what the API really answers at each step.
+   Result:  test.fail - DummyJSON does not save the new product.
+   Also:    "each CRUD step on an existing product returns the expected data"
+            Read, update and delete on product 1. Passes. It shows what the
+            API really answers at each step.
 
-2. Unauthorized access is rejected
+Task 2. Unauthorized access is rejected
    File:    auth.spec.ts
-   - no token                   -> 401 + message, no data      passes
-   - random text as token       -> 401 + message               passes
-   - valid token                -> 200 + products              passes
-   - real token, forged ending  -> 500 instead of 401          test.fail() (deviation 4)
+   Tests:   no token                  -> 401 + message, no data     passes
+            random text as token      -> 401 + message              passes
+            valid token               -> 200 + products             passes
+            real token, forged end    -> 500 instead of 401         test.fail
 
-3. Pagination: number of pages, items per page
+Task 3. Pagination: number of pages, items per page
    File:    pagination.spec.ts
-   - page 3, 10 per page: limit, skip, 10 items, number of pages   passes
-   - the last page has only the items that are left                passes
-   - page 1 and page 2 have no product in common                   passes
-   Note:    DummyJSON has no "page" field. We work it out:
+   Tests:   page 3: limit, skip, 10 items, enough products in total   passes
+            last page has the rest, the page after it is empty        passes
+            page 1 and page 2 share no product                        passes
+   Note:    DummyJSON has no "page" field, so the test works it out:
             page = skip / limit + 1
             number of pages = total / limit, rounded up
 
-4. Create, change, and check the change is saved
+Task 4. Create, change, and check that the change is saved
    File:    userData.spec.ts
    Test:    "create a user, change it, and the change persists"
-   Result:  test.fail() - the new user is not saved (deviation 2).
+   Result:  test.fail - DummyJSON does not save the new user.
 
-5. Duplicates are rejected
+Task 5. A duplicate is rejected
    File:    userData.spec.ts
    Test:    "creating a user with an existing username and email fails"
-            The username and email come from a real user (GET /users/1).
-            We expect 409.
-   Result:  test.fail() - the API creates the duplicate (deviation 3).
+            The username and email are taken from a real user (GET /users/1).
+            The test expects 409 Conflict.
+   Result:  test.fail - DummyJSON creates the duplicate (201).
 
 
 What the task wants to see
 --------------------------
 
-Requests chained with data from earlier answers
-   carts.spec.ts, productCrud.spec.ts, userData.spec.ts, pagination.spec.ts.
-   All six chains are explained in chaining-explained.txt.
+Requests that use data from earlier answers
+   Eight chains, explained in chaining-explained.txt.
 
-Business results, not just "200 OK"
-   Cart totals, carts belong to me, catalog prices, partial update, delete
-   details, page rules, clear error messages.
-   See assertion-notes.txt, part "Business rules".
+Business results, not only "200 OK"
+   Cart totals, carts that belong to me, catalog prices, an update that
+   changes only what was sent, page rules, clear error messages.
+   See "Business rules" in assertion-notes.txt.
 
-Tests check what the system really does
-   The 5 test.fail() tests show real differences instead of hiding them.
-
-
-Optional topics
----------------
-
-User A and user B    auth.spec.ts - test.fail(), A can read B's carts (deviation 5)
-Validation errors    auth.spec.ts - wrong password, missing password (400 + message)
-                     carts.spec.ts - cart for a user that does not exist (404 + message)
-Response time        pagination.spec.ts - under 3000 ms
+Tests that show what the system really does
+   The 5 test.fail tests show real problems of the API instead of hiding them.
 
 
-Evidence checklist
-------------------
+Optional topics, also covered
+-----------------------------
 
-[x] Complete CRUD test flow                   productCrud.spec.ts
-[x] Auth / access control test                auth.spec.ts
-[x] Pagination test                           pagination.spec.ts
-[x] How tests chain data between requests     chaining-explained.txt
-[ ] Green CI run of this folder               after commit and push
+User A and user B
+   auth.spec.ts - user A can read user B's carts (test.fail).
+Validation errors
+   auth.spec.ts - wrong password, missing password (400 + message).
+   carts.spec.ts - a cart for a user that does not exist (404 + message).
+Response time
+   pagination.spec.ts - a page of products in less than 3000 ms.
+
+
+Evidence checklist - Junior Stage 4
+-----------------------------------
+
+[x] Complete CRUD test flow                 productCrud.spec.ts
+[x] Auth / access control test              auth.spec.ts
+[x] Pagination test                         pagination.spec.ts
+[x] How tests chain data between requests   chaining-explained.txt
+[x] Green CI run                            screenshots/ci-green-run.png
+
+
+Evidence: green CI run of Junior Stage 4
+----------------------------------------
+
+Screenshot:  screenshots/ci-green-run.png (the run list in the Actions tab)
+Link:        https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/36857092652
+Workflow:    API tests - Week 18 (Junior Stage 4, Middle Stage 1)
+Run:         #1, "Week 18. Junior Stage 4. Baseline."
+Commit:      d3da450, pushed to main on 2026-10-01
+Result:      green, 20 seconds
+
+The same push also started the week 17 workflow (run #4, also green). At that
+time the filter that limits each workflow to its own folder was not on GitHub
+yet.
+
+
+Middle Stage 1 - the practice tasks
+===================================
+
+Task 1. Review the Junior tests and find duplication
+   ai-review.txt - round 1, findings D1-D10.
+
+Task 2. A typed API client class with auth, base URL and error handling
+   api/ApiClient.ts
+   Base URL:  comes from playwright.config.ts; a "/" at the end is allowed.
+   Auth:      "Authorization: Bearer <token>" is added when a token is given.
+   Errors:    no answer from the server -> a clear error with method and path.
+              An answer that is not JSON -> no error; the text is kept, so the
+              test still sees the real status.
+
+Task 3. TypeScript interfaces for at least 2 resources
+   models/ - Product, User, Cart, login answer.
+   Also what we send: NewProduct, NewUser, NewCartItem.
+   Shared: ApiResponse<T> (status + body) and Page (total, skip, limit).
+
+Task 4. A factory function with defaults
+   test-data/userFactory.ts - buildUser({ role: 'admin' })
+   Every field has a default; a test passes only what it cares about.
+   Used in userData.spec.ts: "a new user created as admin gets the admin role".
+   Same idea: buildProduct() in productFactory.ts.
+
+Task 5. Refactor at least 3 tests to the new layers
+   All 20 Junior tests in all 6 files. The old helper file is deleted.
+
+Task 6. Explain the before/after improvement
+   refactoring-decisions.txt.
+
+Task 7. AI finds duplication and suggests refactoring
+   ai-review.txt (round 1) and refactoring-decisions.txt.
+
+Task 8. AI reviews the tests for maintainability; selected fixes applied
+   ai-review.txt (round 2). Two more AI reviews checked the NEW code after the
+   refactoring (rounds 3 and 4).
+
+
+Evidence checklist - Middle Stage 1
+-----------------------------------
+
+[x] Refactored code with clear layer separation   api/ services/ models/ assertions/
+[x] Factory functions with defaults               test-data/userFactory.ts
+[x] TypeScript interfaces for API models          models/
+[x] Short explanation of refactoring decisions    refactoring-decisions.txt
+[ ] Green CI run after the refactoring            after the next push

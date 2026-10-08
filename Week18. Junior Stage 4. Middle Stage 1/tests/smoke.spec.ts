@@ -1,12 +1,12 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures/api.fixture';
+import { HttpStatus } from '../test-data/httpStatus';
 
 // Setup check: the project runs and DummyJSON answers.
-test('GET /test returns status ok', async ({ request }) => {
-  const response = await request.get('/test');
-  const body = await response.json();
+test('GET /test returns status ok', async ({ apiClient }) => {
+  const { status, body } = await apiClient.get<{ status: string }>('/test');
 
-  console.log('Status:', response.status(), 'Body:', body);
+  console.log('Status:', status, 'Body:', body);
 
-  expect(response.status()).toBe(200);
+  expect(status).toBe(HttpStatus.OK);
   expect(body.status).toBe('ok');
 });

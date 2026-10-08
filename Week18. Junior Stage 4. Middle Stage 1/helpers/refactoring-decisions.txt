@@ -1,0 +1,326 @@
+Refactoring decisions - Middle Stage 1
+======================================
+
+How the Junior Stage 4 tests were split into layers, what got better, and
+where we kept repetition on purpose.
+
+Before:  commit d3da450 "Week 18. Junior Stage 4. Baseline."
+         All requests were functions in one file, helpers/dummyApi.ts.
+After:   the Middle Stage 1 commit. The git diff between the two commits shows
+         every change.
+Input:   the AI reviews in ai-review.txt.
+
+
+In short
+--------
+
+- The 20 Junior tests now use five layers: client, services, models, test
+  data, assertions. Each layer has one job.
+- The tests check the same things as before - some of them more strictly -
+  and give the same results.
+- One new test shows the factory buildUser({ role: 'admin' }) - 21 tests now.
+- No "any" type is left. The test user is defined in one place. Tests no
+  longer build requests or auth headers themselves.
+- The code did NOT get shorter: 107 lines of helpers became 277 lines of
+  client, services, models and assertions. The gain is safety and clarity.
+- Some repetition was kept on purpose: a test should still read from top to
+  bottom without opening five other files.
+
+
+Contents
+--------
+
+   1. The layers - who does what
+   2. Before and after - three examples
+   3. What got better, in numbers
+   4. SOLID, DRY and KISS in this code
+   5. When NOT to apply DRY
+   6. Readability versus reuse
+   7. Why too generic helpers make tests unclear
+   8. What changed for the tests
+
+
+1. The layers - who does what
+-----------------------------
+
+api/ApiClient.ts - the client
+   Job:      send a request and give back { status, body }.
+   Knows:    the base URL, how to add "Authorization: Bearer <token>", how to
+             read the answer.
+   Does not: decide if a status is right or wrong. A 401 comes back like a
+             200, because the negative tests need to see it.
+   Errors:   - no answer from the server -> a clear error with method and path;
+             - an answer that is not JSON (an HTML page, plain text) -> no
+               error, the text is kept in body.message, and the test still
+               gets the real status;
+             - an empty answer -> an empty body {}.
+
+services/ - one class per resource
+   Job:      one short method per endpoint, with a business name:
+             api.products.getById(1), api.carts.getByUser(id, token).
+   Knows:    the paths, the query parameters, which model comes back.
+   Does not: check anything, or add a token by itself. The token is an
+             argument, so a test can call the same endpoint with no token or
+             with a wrong one.
+
+models/ - TypeScript interfaces
+   Job:      describe what we send (NewProduct, NewUser, NewCartItem) and
+             what we get back (Product, User, Cart, the login answer, pages).
+   Note:     these types help the compiler; they do not check the real
+             answer at run time. That kind of check (a schema) belongs to
+             Middle Stage 3.
+
+test-data/ - data for the tests
+   Job:      factories with defaults (buildUser, buildProduct), the test user
+             from .env, an id that does not exist, status codes with names.
+   Note:     httpStatus.ts stayed here from the Junior stage. Status codes are
+             reference values rather than test data, but moving one file only
+             to rename its folder would not make the code safer or clearer.
+
+assertions/cartAssertions.ts - shared checks
+   Job:      the one check that really is shared: the cart totals rules.
+
+fixtures/api.fixture.ts - wiring
+   Job:      builds the client and the services for each test, and logs in
+             for the tests that need a token.
+
+tests/ - the tests
+   Job:      the scenario and the expected values. Nothing else.
+   Exception: smoke.spec.ts calls the client directly (GET /test). It only
+             checks that the API answers at all, and a separate service for
+             one call would be more code than it is worth.
+
+
+2. Before and after - three examples
+------------------------------------
+
+Example 1. Sending a request
+
+   Before (dummyApi.ts - these lines were repeated 13 times, the header 3):
+
+      export async function getCartsOfUser(request, userId, token) {
+        const response = await request.get(`/auth/carts/user/${userId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        return { status: response.status(), body: await readBody(response) };
+      }
+
+   After (CartService.ts - one line, the client does the rest):
+
+      getByUser(userId: number, token: string) {
+        return this.client.get<CartsPage>(`/auth/carts/user/${userId}`, { token });
+      }
+
+   Better: the header, reading the answer and error handling live in one
+   place, and the answer has a real type (CartsPage) instead of "any".
+
+
+Example 2. A test that uses the answer
+
+   Before (carts.spec.ts):
+
+      const { body: me } = await getCurrentUser(request, authToken);
+      expect(me.username).toBe(process.env.AUTH_USERNAME ?? 'emilys');
+      const line1 = cart.products.find((line: { id: number }) => line.id === product1.id);
+      expect(line1.price).toBe(product1.price);
+
+   After:
+
+      const { body: me } = await api.auth.getCurrentUser(authToken);
+      expect(me.username).toBe(TEST_USER.username);
+      const line1 = cart.products.find((line) => line.id === product1.id);
+      if (!line1 || !line2) throw new Error(`product ... is missing from the new cart`);
+      expect(line1.price).toBe(product1.price);
+
+   Better:
+   - the type of "line" comes from the Cart model, so a typo like line.prise
+     is now a compile error;
+   - the test user comes from one place;
+   - if a product is missing, the error says so, instead of "cannot read
+     properties of undefined".
+
+
+Example 3. Getting a token
+
+   Before (fixture + dummyApi.ts):
+
+      return body?.accessToken;   // undefined if the login failed
+
+   After (api.fixture.ts):
+
+      expect(status, `login as ${TEST_USER.username} in the authToken fixture`)
+        .toBe(HttpStatus.OK);
+      expect(body.accessToken, 'accessToken from the login response').toBeTruthy();
+
+   Better: a broken login now stops at the login, with a clear message.
+   Checked by running all tests with a wrong password: 3 normal tests failed
+   with "login as emilys in the authToken fixture", and the run was red.
+
+   Limit: the 2 test.fail tests that use the token still showed as passed -
+   test.fail accepts any failure, whatever the reason. The protection is that
+   normal tests use the same login and turn the run red.
+
+
+3. What got better, in numbers
+------------------------------
+
+   The same request code repeated            13 times  ->  1 place
+   The auth header written by hand            3 times  ->  1 place
+   Places that know the test user name        4        ->  1 (credentials.ts)
+   Answers typed as "any"                     all      ->  none
+   Types written inside tests (id: number)    5        ->  0
+   Setup steps without a status check         6        ->  0
+   Tests that send raw Playwright requests   20        ->  0
+
+   (The smoke test still names the type of its one-field answer itself.)
+
+
+4. SOLID, DRY and KISS in this code
+-----------------------------------
+
+S - Single Responsibility
+   Each layer has one reason to change. A new path -> a service. A new header
+   or error rule -> the client. New test data -> a factory. A new business
+   rule -> the test or assertions/.
+
+O - Open/Closed
+   A new resource (for example posts) is a new service class that uses the
+   same client. Nothing in the client or the other services has to change.
+
+D - Dependency Inversion (in a simple form)
+   Services do not create their own client; they get it in the constructor,
+   and the fixture builds everything. All services share one client, and a
+   test could give a service a different client without changing the service.
+
+L and I (Liskov, Interface Segregation)
+   Not really used: there is no inheritance between our classes, and the
+   interfaces are small data shapes. Adding a base class only to show these
+   letters would be over-engineering.
+
+DRY - one place for each piece of knowledge
+   Sending a request and reading the answer (ApiClient), the auth header, the
+   test user (credentials.ts), the cart totals rule (cartAssertions.ts), the
+   id that does not exist (constants.ts).
+
+KISS - keep it simple
+   - The client has four methods (get, post, put, delete), each with the same
+     two arguments: a path and optional { token, data, params }. No long
+     lists of parameters.
+   - One short method per endpoint, no generic "service for everything".
+   - Two small factories, no generic factory builder.
+   - No schema library, no shared login per worker, no parallel setup
+     requests. Each was suggested by an AI review and rejected as more code
+     than it is worth at this stage (ai-review.txt).
+
+
+5. When NOT to apply DRY
+------------------------
+
+DRY means: one rule or one piece of knowledge lives in one place. It does NOT
+mean: remove every line that looks like another line.
+
+Expected values stay in the test
+   "Product with id '99999' not found", price x 2, totalQuantity 3.
+   If they came from shared code, the test would compare the code with a copy
+   of itself. Only the id became a constant (NON_EXISTENT_ID); the message
+   text is still written in the test.
+
+Every test checks its own status
+   expect(status).toBe(HttpStatus.OK) is written in every test. A helper that
+   "also checks the status" would hide the most important line.
+
+No shared expectError(response, status, message)
+   It would save one line per test, but two checks would hide behind one
+   name, and some tests check more (no token, no data). This was in our own
+   first plan; the AI review changed our mind.
+
+No "current user" fixture
+   GET /auth/me is repeated in 3 tests. But "log in -> who am I -> my carts"
+   is exactly the chaining that Junior Stage 4 asks to show. A fixture would
+   hide it.
+
+test.step and test.fail stay in the test file
+   They describe the scenario. Moving them into helpers would make both the
+   report and the test harder to read.
+
+Two small factories instead of one generic factory
+   Two functions of 10 lines each are easier to read than one clever one.
+
+A login for each test, not one per worker
+   A shared login would need its own request setup - more code to save about
+   at most 4 of the 5 logins per run.
+
+
+6. Readability versus reuse
+---------------------------
+
+The cart totals check is where we did both.
+
+- The first cart test checks rules that are true for ANY cart (total = sum of
+  the lines, and so on). That logic moved to expectCartTotalsConsistent(),
+  because it is the same rule wherever it is used.
+- The second cart test ALSO calls it, but keeps its own numbers: price of
+  product 1 x 2, totalQuantity 3, totalProducts 2. They are worked out in the
+  test, separately from the code being tested. If the shared check replaced
+  them, the test would only prove that the API agrees with itself.
+- In the report the shared check shows up as one step, "cart 1: totals match
+  its lines". If it fails, the report points at the line in the test, and
+  every check inside has its own message ("cart total = sum of line totals").
+  So nobody has to open the helper to understand a failure.
+
+The rule we used: reuse logic that is a real rule; keep visible what the test
+is about - the scenario, the expected values, the status.
+
+
+7. Why too generic helpers make tests unclear
+---------------------------------------------
+
+An AI review suggested one generic service for all resources. We did not
+write it:
+
+      class ResourceService<T> {
+        constructor(client, path) {}
+        get(id), list(limit, skip), add(data), update(id, data), delete(id)
+      }
+
+It looks DRY, but it does not fit the real API:
+- carts are read with /auth/carts/user/{id} and need a token,
+- our tests never delete users, and products have an extra protected list,
+- the body for a new cart is { userId, products }, not a cart.
+Every exception would need one more parameter or an override, and a reader
+would have to learn the generic class before understanding one simple call.
+
+The same problem with one "send everything" helper - also not written:
+
+      sendRequest(method, url, body, token, expectedStatus, schema, retries)
+
+- A call like sendRequest('PUT', url, data, undefined, 200, null, 0) does not
+  say what it tests.
+- The expected status is hidden inside the helper.
+- Every new need adds a parameter, and every call has to fill all of them.
+
+What we did instead: a small client with four methods, and one short method
+per endpoint in each service. More classes, but each one is boring and
+obvious - which is exactly what test code should be.
+
+
+8. What changed for the tests
+-----------------------------
+
+- The expected values are the same.
+- The 5 test.fail tests still fail for the same reasons:
+  500, 200, 404, 404, 201 (see assertion-notes.txt).
+- Some checks became stronger after the AI reviews:
+  - setup steps check their status;
+  - the page count is really checked (the page after the last one is empty);
+  - both neighbouring pages must be full (10 items each);
+  - page 3 needs "at least" 30 products in total (>= instead of >);
+  - deletedOn must be a real date, within 60 s of now in either direction;
+  - a missing cart line gives a clear error.
+- One title changed: the last-page test is now "the page count is right: the
+  last page has the remaining items, the next page is empty", because it
+  checks one more page. (The response-time title reads the same, but the
+  number in it now comes from a constant.)
+- One new test: "a new user created as admin gets the admin role".
+- The chains in chaining-explained.txt are the same; only the function names
+  in the code are new.
