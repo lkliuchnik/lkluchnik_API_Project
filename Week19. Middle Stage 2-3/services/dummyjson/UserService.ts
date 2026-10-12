@@ -1,5 +1,5 @@
-import { ApiClient } from '../api/ApiClient';
-import { NewUser, User } from '../models/user';
+import { ApiClient } from '../../api/ApiClient';
+import { NewUser, User } from '../../models/dummyjson/user';
 
 export class UserService {
   constructor(private readonly client: ApiClient) {}

@@ -1,5 +1,5 @@
-import { test, expect } from '../fixtures/api.fixture';
-import { HttpStatus } from '../test-data/httpStatus';
+import { test, expect } from '../../fixtures/dummyjson.fixture';
+import { HttpStatus } from '../../test-data/httpStatus';
 
 test.describe('Product pagination', () => {
   const PAGE_SIZE = 10;
@@ -62,14 +62,13 @@ test.describe('Product pagination', () => {
   });
 
   test(`a page of products responds in less than ${MAX_RESPONSE_TIME_MS} ms`, async ({ api }) => {
-    const startTime = Date.now();
-    const { status } = await api.products.getPage(PAGE_SIZE, 0);
-    const responseTime = Date.now() - startTime;
+    const { status, durationMs, attempts } = await api.products.getPage(PAGE_SIZE, 0);
 
     // the measured time is shown in the HTML report, also when the test passes
-    test.info().annotations.push({ type: 'response time', description: `${responseTime} ms` });
+    test.info().annotations.push({ type: 'response time', description: `${durationMs} ms` });
 
     expect(status).toBe(HttpStatus.OK);
-    expect(responseTime).toBeLessThan(MAX_RESPONSE_TIME_MS);
+    expect(attempts, 'answered at the first try - no retry hidden in the time').toBe(1);
+    expect(durationMs).toBeLessThan(MAX_RESPONSE_TIME_MS);
   });
 });

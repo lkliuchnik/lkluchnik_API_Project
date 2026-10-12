@@ -1,6 +1,6 @@
-import { test, expect } from '../fixtures/api.fixture';
-import { buildUser } from '../test-data/userFactory';
-import { HttpStatus } from '../test-data/httpStatus';
+import { test, expect } from '../../fixtures/dummyjson.fixture';
+import { buildUser } from '../../test-data/dummyjson/userFactory';
+import { HttpStatus } from '../../test-data/httpStatus';
 
 test.describe('User data', () => {
   test('a new user created as admin gets the admin role', async ({ api }) => {

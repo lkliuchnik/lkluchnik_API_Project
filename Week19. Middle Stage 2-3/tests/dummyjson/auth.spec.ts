@@ -1,6 +1,5 @@
-import { test, expect } from '../fixtures/api.fixture';
-import { HttpStatus } from '../test-data/httpStatus';
-import { TEST_USER } from '../test-data/credentials';
+import { test, expect } from '../../fixtures/dummyjson.fixture';
+import { HttpStatus } from '../../test-data/httpStatus';
 
 test.describe('Access control', () => {
   const PAGE_SIZE = 5; // the access check does not need more products
@@ -55,16 +54,16 @@ test.describe('Access control', () => {
 });
 
 test.describe('Login validation', () => {
-  test('login with a wrong password is rejected with a clear message', async ({ api }) => {
-    const { status, body } = await api.auth.login(TEST_USER.username, 'wrong-password');
+  test('login with a wrong password is rejected with a clear message', async ({ api, env }) => {
+    const { status, body } = await api.auth.login(env.dummyjson.username, 'wrong-password');
 
     expect(status).toBe(HttpStatus.BAD_REQUEST);
     expect(body.message).toBe('Invalid credentials');
     expect(body.accessToken).toBeUndefined();
   });
 
-  test('login without a password is rejected with a clear message', async ({ api }) => {
-    const { status, body } = await api.auth.login(TEST_USER.username, '');
+  test('login without a password is rejected with a clear message', async ({ api, env }) => {
+    const { status, body } = await api.auth.login(env.dummyjson.username, '');
 
     expect(status).toBe(HttpStatus.BAD_REQUEST);
     expect(body.message).toBe('Username and password required');

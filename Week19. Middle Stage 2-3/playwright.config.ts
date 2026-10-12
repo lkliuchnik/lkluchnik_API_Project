@@ -1,18 +1,13 @@
 import { defineConfig } from '@playwright/test';
-import dotenv from 'dotenv';
+import { env } from './config/environments';
 
-dotenv.config();
-
+// The API addresses are not here: each API has its own base URL in config/environments.ts.
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['html'], ['list']] : 'list',
-  use: {
-    baseURL: process.env.BASE_URL ?? 'https://dummyjson.com',
-    extraHTTPHeaders: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-  },
+  metadata: { environment: env.name }, // shown in the HTML report
+  // No extraHTTPHeaders here: the API clients send their own JSON headers (api/createApiClient.ts),
+  // so the browser pages of the UI tests are not affected.
 });

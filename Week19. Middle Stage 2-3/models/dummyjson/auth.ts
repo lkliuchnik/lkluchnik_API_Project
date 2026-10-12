@@ -6,3 +6,6 @@ export interface LoginResponse {
   accessToken: string;
   refreshToken: string;
 }
+
+// Answer of POST /auth/refresh: the two tokens, like the login answer.
+export type RefreshResponse = Pick<LoginResponse, 'accessToken' | 'refreshToken'>;

@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { NewUser } from '../models/user';
+import { NewUser } from '../../models/dummyjson/user';
 
 // Returns new user data with a unique username and email on every call.
 // Example: buildUser({ role: 'admin' }) - an admin, everything else default.

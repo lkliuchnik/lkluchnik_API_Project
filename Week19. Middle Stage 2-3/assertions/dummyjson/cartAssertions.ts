@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { Cart } from '../models/cart';
+import { Cart } from '../../models/dummyjson/cart';
 
 // Business rules every cart must follow, whatever products are in it.
 // box: true - a failure is reported at the line in the test that called this function.

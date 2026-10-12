@@ -1,4 +1,4 @@
-// DummyJSON answers every error with { "message": "..." }.
+// Every API here answers errors with { "message": "..." }.
 export interface ApiErrorBody {
   message?: string;
 }
@@ -7,12 +7,8 @@ export interface ApiErrorBody {
 // and negative tests can still read body.message without a cast.
 export interface ApiResponse<T> {
   status: number;
+  ok: boolean; // status 200-299
   body: T & ApiErrorBody;
-}
-
-// Pagination fields that every DummyJSON list has.
-export interface Page {
-  total: number;
-  skip: number;
-  limit: number;
+  durationMs: number; // time of the last attempt
+  attempts: number; // 1, or more if the retry interceptor sent the request again
 }

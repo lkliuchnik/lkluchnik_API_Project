@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { NewProduct } from '../models/product';
+import { NewProduct } from '../../models/dummyjson/product';
 
 // Returns new product data with a unique title on every call.
 export function buildProduct(overrides: Partial<NewProduct> = {}): NewProduct {

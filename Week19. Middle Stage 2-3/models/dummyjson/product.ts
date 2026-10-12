@@ -1,4 +1,4 @@
-import { Page } from './common';
+import { Page } from './page';
 
 // Only the fields the tests use. DummyJSON returns more.
 export interface Product {

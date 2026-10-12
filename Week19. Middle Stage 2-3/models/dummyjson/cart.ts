@@ -1,4 +1,4 @@
-import { Page } from './common';
+import { Page } from './page';
 
 // One product line inside a cart.
 export interface CartLine {

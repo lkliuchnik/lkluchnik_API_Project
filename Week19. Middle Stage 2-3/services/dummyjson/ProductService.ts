@@ -1,5 +1,5 @@
-import { ApiClient } from '../api/ApiClient';
-import { DeletedProduct, NewProduct, Product, ProductsPage } from '../models/product';
+import { ApiClient } from '../../api/ApiClient';
+import { DeletedProduct, NewProduct, Product, ProductsPage } from '../../models/dummyjson/product';
 
 export class ProductService {
   constructor(private readonly client: ApiClient) {}

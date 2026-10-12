@@ -1,5 +1,5 @@
-import { test, expect } from '../fixtures/api.fixture';
-import { HttpStatus } from '../test-data/httpStatus';
+import { test, expect } from '../../fixtures/dummyjson.fixture';
+import { HttpStatus } from '../../test-data/httpStatus';
 
 // Setup check: the project runs and DummyJSON answers.
 test('GET /test returns status ok', async ({ apiClient }) => {

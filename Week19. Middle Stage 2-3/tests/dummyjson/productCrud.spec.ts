@@ -1,7 +1,7 @@
-import { test, expect } from '../fixtures/api.fixture';
-import { buildProduct } from '../test-data/productFactory';
-import { HttpStatus } from '../test-data/httpStatus';
-import { NON_EXISTENT_ID } from '../test-data/constants';
+import { test, expect } from '../../fixtures/dummyjson.fixture';
+import { buildProduct } from '../../test-data/dummyjson/productFactory';
+import { HttpStatus } from '../../test-data/httpStatus';
+import { NON_EXISTENT_ID } from '../../test-data/dummyjson/constants';
 
 test.describe('Product CRUD', () => {
   // known deviation: DummyJSON does not save changes, see assertion-notes.txt

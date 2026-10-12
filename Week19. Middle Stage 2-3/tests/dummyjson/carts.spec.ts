@@ -1,15 +1,14 @@
-import { test, expect } from '../fixtures/api.fixture';
-import { expectCartTotalsConsistent } from '../assertions/cartAssertions';
-import { HttpStatus } from '../test-data/httpStatus';
-import { TEST_USER } from '../test-data/credentials';
-import { NON_EXISTENT_ID } from '../test-data/constants';
+import { test, expect } from '../../fixtures/dummyjson.fixture';
+import { expectCartTotalsConsistent } from '../../assertions/dummyjson/cartAssertions';
+import { HttpStatus } from '../../test-data/httpStatus';
+import { NON_EXISTENT_ID } from '../../test-data/dummyjson/constants';
 
 test.describe('Cart business rules', () => {
-  test('the logged-in user sees only their own carts, with correct totals', async ({ api, authToken }) => {
+  test('the logged-in user sees only their own carts, with correct totals', async ({ api, authToken, env }) => {
     // Step 1: the token (from the login in the fixture) tells us who the user is
     const { status: meStatus, body: me } = await api.auth.getCurrentUser(authToken);
     expect(meStatus, 'precondition: GET /auth/me').toBe(HttpStatus.OK);
-    expect(me.username).toBe(TEST_USER.username);
+    expect(me.username).toBe(env.dummyjson.username);
 
     // Step 2: the user id from step 1 is used to load the carts
     const { status, body } = await api.carts.getByUser(me.id, authToken);

@@ -1,0 +1,260 @@
+Test plan - Week 19
+===================
+
+Middle Stage 2 (reusable API layers) and Middle Stage 3 (end-to-end flows,
+API + UI). One folder, one architecture, two APIs:
+
+   DummyJSON          https://dummyjson.com    Middle Stage 2
+   DemoQA BookStore   https://demoqa.com       Middle Stage 3 (not started)
+
+Start here. This file says which task is done where, and where the evidence
+is. How the code works and how to extend it: README.txt.
+
+
+In short
+--------
+
+- Middle Stage 2 is done. The week 18 tests became a layered architecture
+  that works for more than one API:
+  - a base client with three interceptors: auth, retry, logging;
+  - two environments, dev and staging, switched with TEST_ENV;
+  - one folder per API inside every layer;
+  - shared fixtures: a logged-in client, ready test data, a request log;
+  - new tests written only with the layers.
+- 40 tests: 21 from week 18 and 19 new. Locally all of them pass in both
+  environments. 5 of them are the known "expected to fail" tests from
+  week 18 (assertion-notes.txt).
+- Still open: a green CI run (after the push), and all of Middle Stage 3.
+
+
+The files in helpers/
+---------------------
+
+README.txt
+   How the architecture works, and how to add a test, an endpoint, a
+   service, an environment or a whole new API. Written for a new team member.
+
+assertion-notes.txt
+   What the tests check, the business rules, and the 5 known deviations of
+   DummyJSON.
+
+test-plan.txt
+   This file.
+
+
+Words used in these files
+-------------------------
+
+client (ApiClient)
+   The one class that sends HTTP requests. Every answer comes back in the
+   same shape: status, ok, body, durationMs, attempts.
+
+interceptor
+   A small function every request passes through on its way to the server.
+   Here: auth (adds the login token), retry (tries again when the server is
+   briefly down), logging (writes each request to the report).
+
+service
+   A class for one resource, with one method per endpoint - for example
+   api.posts.getByUser(1) sends GET /posts/user/1.
+
+fixture
+   Something Playwright prepares before a test and hands to it - for example
+   "authApi", the services with a logged-in client.
+
+environment
+   A named set of settings (test user, retries, timeout). Chosen with
+   TEST_ENV=dev or TEST_ENV=staging; the code stays the same.
+
+seeded data
+   Test data that is ready before the test starts. DummyJSON does not save
+   new data, so here it is existing data found through the API.
+
+test.fail
+   A Playwright mark: "this test is expected to fail", because the API does
+   not do what the task asks. If it ever passes, the run turns red.
+
+matrix (CI)
+   One CI workflow that runs the same job several times with different
+   settings - here once for dev and once for staging.
+
+
+How the work is split into commits
+----------------------------------
+
+1. "Week 19. Middle Stage 2-3. Baseline (copy of week 18)."   (6bb2965)
+   The week 18 code, copied. Nothing new - the "before" state.
+
+2. "Week 19. Middle Stage 2. Reusable API layers."
+   The architecture: interceptors, createApiClient, environments, per-API
+   folders, fixtures, interceptor and environment tests, docs, CI matrix.
+
+3. "Week 19. Middle Stage 2. New services on the layers (posts, comments)."
+   Only new code that USES the architecture: a new endpoint (product search)
+   and two new services (posts, comments) with their tests. This commit has
+   no change in the client, the interceptors or the config - that is the
+   proof that the architecture can be extended.
+
+
+Middle Stage 2 - the practice tasks
+===================================
+
+Task 1. A base API client class
+--------------------------------
+
+The task: a client that handles auth, headers, base URL and response parsing.
+
+Where:   api/ApiClient.ts, api/createApiClient.ts, api/interceptors/
+
+Base URL
+   Each API has its own, from config/environments.ts. A "/" at the end of
+   the address is fine.
+
+Headers
+   Every client sends JSON headers (set in createApiClient). A request can
+   add its own headers. A token becomes "Authorization: Bearer <token>".
+   The headers are not in playwright.config.ts, so they will not reach the
+   browser pages of the UI tests in Stage 3.
+
+Response parsing
+   Always the same shape: status, ok, body, durationMs, attempts. An answer
+   that is not JSON is kept as text. A 4xx or 5xx answer is returned, not
+   thrown - negative tests need to see it.
+
+Auth interceptor - checked by 4 tests in tests/dummyjson/interceptors.spec.ts
+   - it adds the token, so GET /auth/me works without passing one;
+   - a rejected token is refreshed once, and the request is sent again;
+   - if no new token can be got, the test gets the 401, not an exception;
+   - a token passed by the test is left alone, even a wrong one.
+
+Retry interceptor - checked by 5 tests in the same file
+   - a GET that keeps getting 503 is sent 3 times, then the 503 is returned;
+   - a GET that gets 500 is not sent again (a server bug answers the same);
+   - a POST that gets 503 is not sent again (it could create data twice);
+   - a GET with no answer at all is tried 3 times, then the error is thrown;
+   - a GET that succeeds is sent once.
+
+Logging interceptor - checked by 1 test in the same file
+   - one line per real request: method, path with query, status, time.
+     The lines are attached to every test's HTML report as "api-log".
+
+
+Task 2. At least 2 service classes
+-----------------------------------
+
+Where:   services/dummyjson/
+
+   From week 18:   AuthService, ProductService, UserService, CartService
+   New:            PostService, CommentService
+   New endpoint:   ProductService.search()
+
+
+Task 3. Environment config for at least 2 environments
+-------------------------------------------------------
+
+Where:   config/environments.ts
+
+   dev       user emilys,   no retries,  timeout 10 s   (the default)
+   staging   user michaelw, 2 retries,   timeout 15 s
+
+How:     TEST_ENV=staging npx playwright test
+Proof:   tests/dummyjson/environment.spec.ts checks that the tests log in as
+         the user of the chosen environment. Every other test passes in both
+         environments too. CI runs both (a matrix).
+Limit:   DummyJSON has only one public server, so both environments use the
+         same address. They differ in user, retries and timeout.
+
+
+Task 4. Shared fixtures (authenticated client, seeded data)
+------------------------------------------------------------
+
+Where:   fixtures/base.fixture.ts, fixtures/dummyjson.fixture.ts
+
+   authApi            the authenticated client: every request is logged in
+   postWithComments   seeded data: an existing post that has comments, found
+                      through the API before the test
+   apiLog             a shared hook: after every test, the request log is
+                      attached to the report
+   also               env, api (no login), authToken, session, apiClient
+                      (what each one is for: README.txt, part 5)
+
+
+Task 5. Documentation: how to add a new service
+------------------------------------------------
+
+Where:   README.txt, part 8 - step by step, with the real PostService as the
+         example. Parts 6, 7, 9 and 10 do the same for a new test, a new
+         endpoint, a new environment and a new API.
+
+
+What the task wants to see
+--------------------------
+
+A new endpoint test needs only a service method and a test
+   Shown at two sizes, both in commit 3 (no change in the client, the
+   interceptors or the config there):
+
+   A new endpoint in an existing service - exactly the task's words
+      services/dummyjson/ProductService.ts      one method, search()
+      tests/dummyjson/productSearch.spec.ts     the test
+
+   A whole new resource - one step bigger
+      models/dummyjson/post.ts, comment.ts      what we send and get back
+      services/dummyjson/PostService.ts,
+      services/dummyjson/CommentService.ts      the services
+      fixtures/dummyjson.fixture.ts             one line per service, and the
+                                                postWithComments data
+      tests/dummyjson/posts.spec.ts,
+      tests/dummyjson/comments.spec.ts          the tests
+
+Configuration changes between environments without code changes
+   The same code runs with TEST_ENV=dev and TEST_ENV=staging - another user,
+   other retries and timeout. CI runs both.
+
+The architecture follows the existing project patterns
+   The same layers as week 18 (client, services, models, factories,
+   fixtures, tests) and the same rules: expected values stay in the tests,
+   services never check anything, test.fail goes on the test declaration.
+   The interceptors were added inside the existing client. The old tests
+   only got new import paths and the environment's user instead of a fixed
+   one.
+
+
+What changed compared to the week 18 code
+-----------------------------------------
+
+- Every layer now has one folder per API: services/dummyjson,
+  models/dummyjson, tests/dummyjson, test-data/dummyjson,
+  assertions/dummyjson. The fixture file is fixtures/dummyjson.fixture.ts.
+- The test user comes from the environment, not from a fixed file.
+- The client got interceptors, headers per client and per request, and three
+  more fields in the answer (ok, durationMs, attempts).
+- AuthService can refresh a token. Services that need a login take the token
+  as optional - authApi adds it by itself.
+- playwright.config.ts has no address and no headers any more; it shows the
+  environment name in the HTML report.
+- The response-time test reads the time from the answer, and checks that no
+  retry is hidden inside it.
+- All other week 18 tests check the same things as before.
+
+
+Evidence checklist - Middle Stage 2
+-----------------------------------
+
+[x] Project structure with clear layers        README.txt, parts 1 and 2
+[x] Base client + 2 service classes            api/ApiClient.ts,
+                                               services/dummyjson/
+[x] Multi-environment config                   config/environments.ts
+[x] README explaining the architecture         README.txt
+[x] New tests written with the layers          tests/dummyjson/
+                                               productSearch.spec.ts,
+                                               posts.spec.ts,
+                                               comments.spec.ts
+[x] All tests pass locally, dev and staging    40 and 40
+[ ] Green CI run, both environments            after the push
+
+
+Middle Stage 3 - the practice tasks
+===================================
+
+Not started. The plan is in docs/session-log.md, part "Week 19".
