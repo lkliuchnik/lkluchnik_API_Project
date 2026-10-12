@@ -24,7 +24,8 @@ In short
 - 40 tests: 21 from week 18 and 19 new. Locally all of them pass in both
   environments. 5 of them are the known "expected to fail" tests from
   week 18 (assertion-notes.txt).
-- Still open: a green CI run (after the push), and all of Middle Stage 3.
+- CI is green for both environments, for both Stage 2 commits.
+- Still open: all of Middle Stage 3.
 
 
 The files in helpers/
@@ -40,6 +41,9 @@ assertion-notes.txt
 
 test-plan.txt
    This file.
+
+screenshots/
+   Pictures of the CI runs on GitHub.
 
 
 Words used in these files
@@ -85,15 +89,16 @@ How the work is split into commits
 1. "Week 19. Middle Stage 2-3. Baseline (copy of week 18)."   (6bb2965)
    The week 18 code, copied. Nothing new - the "before" state.
 
-2. "Week 19. Middle Stage 2. Reusable API layers."
+2. "Week 19. Middle Stage 2. Reusable API layers."   (63a70ae)
    The architecture: interceptors, createApiClient, environments, per-API
    folders, fixtures, interceptor and environment tests, docs, CI matrix.
 
-3. "Week 19. Middle Stage 2. New services on the layers (posts, comments)."
+3. "Middle Stage 2. New services on the layers (posts, comments)."   (e3cd346)
    Only new code that USES the architecture: a new endpoint (product search)
    and two new services (posts, comments) with their tests. This commit has
    no change in the client, the interceptors or the config - that is the
-   proof that the architecture can be extended.
+   proof that the architecture can be extended. Its size: 9 files, 212 lines
+   added, 0 lines changed or deleted.
 
 
 Middle Stage 2 - the practice tasks
@@ -251,7 +256,31 @@ Evidence checklist - Middle Stage 2
                                                posts.spec.ts,
                                                comments.spec.ts
 [x] All tests pass locally, dev and staging    40 and 40
-[ ] Green CI run, both environments            after the push
+[x] Green CI run, both environments            screenshots/ci-green-run-middle2.png
+
+
+Evidence: green CI runs of Middle Stage 2
+-----------------------------------------
+
+Screenshot:  screenshots/ci-green-run-middle2.png
+             (the Actions tab: the three week 19 runs, all green)
+Workflow:    API tests - Week 19 (Middle Stage 2-3)
+
+Run #2 - commit 63a70ae, the architecture alone (32 tests)
+   Link:     https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/38240308534
+   Jobs:     test (dev) - green, test (staging) - green
+
+Run #3 - commit e3cd346, plus the new services (40 tests)
+   Link:     https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/38240859054
+   Jobs:     test (dev) - green, test (staging) - green
+   Time:     21 seconds
+
+Each Stage 2 commit was pushed on its own, so CI checked both: the
+architecture works by itself, and the new services did not break it. Each
+run has two jobs from the matrix - the same code in dev and in staging.
+
+Run #1 on the same page is the baseline copy of week 18 (6bb2965), so the
+page shows "before" and "after", all green.
 
 
 Middle Stage 3 - the practice tasks
