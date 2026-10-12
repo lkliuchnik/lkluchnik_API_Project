@@ -13,6 +13,10 @@ export class ProductService {
     return this.client.get<ProductsPage>('/auth/products', { params: { limit }, token });
   }
 
+  search(query: string) {
+    return this.client.get<ProductsPage>('/products/search', { params: { q: query } });
+  }
+
   getById(id: number) {
     return this.client.get<Product>(`/products/${id}`);
   }
