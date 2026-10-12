@@ -1,0 +1,18 @@
+{
+  "name": "week19-middle-stage-2-3",
+  "version": "1.0.0",
+  "description": "Middle Stage 2 (reusable API layers) and Middle Stage 3 (end-to-end flows, API + UI) practice project against DummyJSON and DemoQA BookStore",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:report": "playwright show-report"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.20.3",
+    "dotenv": "^18.0.3",
+    "typescript": "^7.0.2"
+  }
+}
