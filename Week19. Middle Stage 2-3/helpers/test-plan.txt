@@ -14,11 +14,10 @@ is. How the code works and how to extend it: README.txt.
 In short
 --------
 
-   Stage            Status                      Tests   CI
-   Middle Stage 2   done                        40      green (dev, staging)
-   Middle Stage 3   done locally, not pushed    +12     after the push
-   Total                                        52      all pass locally,
-                                                        dev and staging
+   Stage            Status   Tests   CI
+   Middle Stage 2   done     40      green (dev, staging)
+   Middle Stage 3   done     +12     green (dev, staging, ui-test)
+   Total                     52      all pass, locally and in CI
 
 Middle Stage 2 - DummyJSON
    The week 18 tests became a layered architecture that works for more than
@@ -154,9 +153,13 @@ How the work is split into commits
    proof that the architecture can be extended. Its size: 9 files, 212 lines
    added, 0 lines changed or deleted.
 
-4. Middle Stage 3 - one commit after the Stage 2 evidence commit
-   ("Week 19. Middle Stage 2. Green CI run.", 4d5f16f): the DemoQA Book
-   Store services, fixtures, pages, tests and the Stage 3 documents.
+4. "Week 19. Middle Stage 2. Green CI run."   (4d5f16f)
+   The Stage 2 evidence: the CI screenshot in the report.
+
+5. "Week 19. Middle Stage 3. End-to-end flows, API + UI, coverage."   (861eb3f)
+   The DemoQA Book Store services, fixtures, pages and tests, and the
+   Stage 3 documents. 25 files. The client, the interceptors and
+   models/common.ts did not change.
 
 
 Middle Stage 2 - the practice tasks
@@ -499,4 +502,28 @@ Evidence checklist - Middle Stage 3
 [x] Why API vs UI vs combined                  modality.txt
 [x] AI tasks with prompts and decisions        ai-review.txt
 [x] All tests pass locally, dev and staging    52 and 52
-[ ] Green CI run (API jobs + ui-test)          after the push
+[x] Green CI run (API jobs + ui-test)          screenshots/ci-green-run-middle3.png,
+                                               ci-green-run-middle3-jobs.png
+
+
+Evidence: green CI run of Middle Stage 3
+----------------------------------------
+
+Screenshots: screenshots/ci-green-run-middle3.png
+             (the Actions tab: run #5 on top, green, with the Stage 2 runs
+             below it)
+             screenshots/ci-green-run-middle3-jobs.png
+             (run #5 itself: the three jobs test (dev), test (staging) and
+             ui-test (dev), all green)
+Workflow:    API tests - Week 19 (Middle Stage 2-3)
+
+Run #5 - commit 861eb3f, Middle Stage 3 (52 tests)
+   Link:     https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/38374435293
+   Jobs:     test (dev)       - green, 51 API tests
+             test (staging)   - green, 51 API tests
+             ui-test (dev)    - green, the API + UI test in a real browser
+   Time:     1 min 52 s in total; the three jobs run at the same time
+
+The API jobs and the UI job are separate, so the run shows on its own that
+the API tests pass in both environments AND that the web page shows what
+the API prepared.
