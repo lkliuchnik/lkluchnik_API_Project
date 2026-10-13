@@ -1,0 +1,327 @@
+AI-assisted work - Middle Stage 3
+=================================
+
+Middle Stage 3 evidence: four tasks where an AI did the first draft, and what
+we did with it - checked by hand, refined, and the final choice explained.
+
+
+In short
+--------
+
+- Task 1: the AI drafted 10 test scenarios from the API documentation. All
+  were checked against the real API; 7 kept, 4 written as tests, 2 of them
+  found defects (coverage-gaps.txt).
+- Task 2: the AI proposed 5 reasons for the old "books never appear in the
+  UI" problem. Two were confirmed by experiments - both are faults in the
+  old TESTS, not in the app.
+- Task 3: the AI proposed 6 improvements to fixtures and settings. 5 were
+  applied; the token logins per test run went from 15 to 10.
+- Task 4: the AI compared two ways to prepare test accounts. We chose one
+  new account per test and wrote down when the other way is better.
+
+
+Contents
+--------
+
+   How the AI was used
+   Task 1 - test scenarios from the API documentation
+   Task 2 - unstable and slow tests: causes and manual checks
+   Task 3 - improvements to structure, fixtures and settings
+   Task 4 - two ways to prepare accounts, compared
+   What we changed in the AI's answers
+
+
+How the AI was used
+-------------------
+
+Tool:     Claude Code. Each request ran in a separate AI helper (a
+          sub-agent) that could read the code and the inputs but change
+          nothing. Tasks 3 and 4 were one request in two parts; each part is
+          quoted under its task. All prompts are word for word.
+Inputs:   the DemoQA swagger documentation (it is not a separate file on the
+          site; it is embedded in /swagger/swagger-ui-init.js and was taken
+          from there), the test code, a request log of a real run, and the
+          notes of the earlier UI project (weeks 4, 5 and 9:
+          Playwright UI tests of demoqa.com).
+Rule:     no AI statement was used without checking it - against the code,
+          the request log, or the live API.
+
+
+Task 1 - test scenarios from the API documentation
+==================================================
+
+Prompt
+------
+
+"Using the Book Store API documentation and the list of existing tests,
+draft additional test scenarios that are NOT yet covered. Aim for 10
+candidates. Cover: negative and edge cases (missing or wrong fields, wrong
+ids, wrong tokens), business rules that go beyond field validation (what the
+store must guarantee about accounts, tokens and collections), places where
+the documentation and real behaviour may differ (for example documented
+status codes), and security-relevant behaviour. For each scenario give: a
+short title, the endpoint(s), the steps, the expected result according to
+the documentation or common REST practice, why it matters (risk if it is
+broken), priority (high/medium/low), and the best testing level (API only,
+UI only, or API + UI) with one sentence why. Do not repeat what the
+existing tests already check. Do not invent endpoints that are not in the
+documentation."
+
+What the AI proposed
+--------------------
+
+   S1   missing, broken or wrong token on every endpoint          high
+   S2   token lifecycle: does an old token still work?            medium
+   S3   wrong logins and the Authorized endpoint                  high
+   S4   creating an account with missing or wrong fields          medium
+   S5   the documentation does not match the real answers         medium
+   S6   another reader cannot delete an account or change books   high
+   S7   delete all books                                           high
+   S8   a batch add is all or nothing                              medium
+   S9   single-book calls with a wrong ISBN                        medium
+   S10  no password in any answer; a user name with HTML is safe   medium
+
+Review - checked against the real API
+-------------------------------------
+
+   S8   a list of two ISBNs (one from the catalog, one unknown:
+        0000000000) -> 201, the answer lists both, only the catalog book is
+        added. DEFECT.
+   S10  the readable middle part of the token holds the password in plain
+        text; Login returns the password. DEFECT.
+   S2   a second login makes the first token answer 401. A real rule.
+   S7   delete all works for the owner (204, also on an empty list); no
+        token -> 401.
+   S6   another reader deleting the account or all books -> 401.
+   S3   wrong password or unknown user -> 200 with status "Failed"
+        (documented: 400). Authorized for an unknown user -> 404.
+
+Decision
+--------
+
+   Written as tests:    S2, S7 + S6, S8, S10
+   Documented only:     S3, S5, S4 + S9   (reasons in coverage-gaps.txt)
+   Left out:            S1 (mostly covered), the XSS part of S10 (would
+                        inject script into a public demo site)
+
+
+Task 2 - unstable and slow tests: causes and manual checks
+==========================================================
+
+Prompt
+------
+
+"Analyze these tests for flakiness, instability and slowness. Use the
+request log to find where the time goes. Look at the older project's 'KNOWN
+BUG' (books added through the API never appear in the UI profile) and
+propose possible root causes - including causes in the tests themselves, not
+only in the application. For each hypothesis give: what you think happens,
+the evidence in the code or the log, how to validate it manually with a
+small experiment (exact requests or steps), and what to change if it is
+confirmed. Rank the hypotheses from most to least likely. Also list risks
+for the current API + UI test (tests\bookstore\profileUi.spec.ts) when it
+runs in CI."
+
+Where the time goes (AI, from the request log)
+----------------------------------------------
+
+About 84% of the run is opening, logging into and closing accounts. The
+login call (GenerateToken) alone is about half, and one login per test was
+only for the cleanup. We checked this against the log: correct. The fix is
+in task 3.
+
+The hypotheses, and how each was checked by hand
+------------------------------------------------
+
+H1. A new login after the UI login made the browser's token invalid
+   AI said:    the old test logged in through the UI first, then its
+               fixture logged in again through the API.
+   Experiment: through the API only - login 1 gives token A, login 2 gives
+               token B; then GET the account with A and with B.
+   Result:     A -> 401 "User not authorized!", B -> 200. Then in a real
+               browser: after a UI login, the token from an earlier API
+               login gets 401.
+   Verdict:    CONFIRMED. A fault in the old tests.
+
+H2. The profile page was never loaded again after the books were added
+   AI said:    the page loads the list once; a click on "Profile" while on
+               the profile does not reload it.
+   Experiment: log in through the UI, read the browser's own token from the
+               cookie, add a book through the API with THAT token (so H1
+               cannot happen), look at the profile, then reload it.
+   Result:     without reload - not shown; after reload - shown.
+   Verdict:    CONFIRMED. Also a fault in the old tests.
+
+H3. A shared account was changed by another run
+   Verdict:    possible (the old project used one fixed account), not
+               reproduced - doing that on a public server would disturb
+               other users. Our tests cannot have it: one account per test.
+
+H4. The app keeps the list in the page and never asks again
+   Verdict:    this is the app side of H2 - the list is fetched when the
+               page loads. Normal for a single-page app; not a defect.
+
+H5. Slow page or wrong account
+   Verdict:    rejected - the old failure was the same every time, and the
+               account id was right.
+
+Conclusion: the old "known bug" was caused by the tests (H1 and H2), not by
+the application. The new API + UI test avoids both: API setup first, UI
+login second, the profile opened after the data is ready.
+
+Risks for the API + UI test - what was applied
+----------------------------------------------
+
+   Applied:      test timeout 60 s and expect timeout 10 s; a trace is kept
+                 when a test fails; the UI test runs in its own CI job; the
+                 page object finds books by role, not by CSS class.
+   Kept as is:   the order of the books on the profile (the API returns them
+                 in the order they were added - checked in every run).
+
+
+Task 3 - improvements to structure, fixtures and settings
+=========================================================
+
+Prompt (part 1)
+---------------
+
+"Suggest improvements to the test structure, the fixtures or the
+configuration of the Book Store tests. For each: the problem, the evidence
+(code or log), the change, the expected gain, and the risk. Rank by value
+for effort."
+
+What the AI proposed, and what we did
+-------------------------------------
+
+I1. The cleanup logs in again although the reader already has a token
+   Done:  each reader has ONE login session, used by the test (readerApi)
+          and by the cleanup. If the token was replaced (a UI login), the
+          auth interceptor gets a new one once.
+
+I2. A test that closes its own account still pays a login in the cleanup
+   Done:  accountCleanup.forget(userId) right after the test closes it.
+
+I3. The timeouts do not fit DemoQA
+   Done:  30 s per DemoQA request (env.bookstore.timeoutMs), 60 s per test,
+          10 s for expect().
+
+I4. The cleanup runs one account at a time and fails silently
+   Done:  all accounts are closed at the same time (Promise.allSettled), the
+          status is checked, and an account that could not be closed is
+          marked in the report as "leaked account".
+
+I5. More parallel workers in CI
+   Not done: it would put more load on a free public site that is already
+          the slowest part of the run.
+
+I6. The owner test builds its second account by hand
+   Done:  a newReader() fixture opens extra accounts the same way as the
+          reader fixture, with a precondition check.
+
+Measured result (the 8 Book Store tests that existed before the gap tests)
+--------------------------------------------------------------------------
+
+   Logins (GenerateToken) per run     15 -> 10
+   A DemoQA login takes up to 7 s, so this is the biggest single saving.
+   Leaked accounts after the run      none
+
+
+Task 4 - two ways to prepare accounts, compared
+===============================================
+
+Prompt (part 2)
+---------------
+
+"Compare two alternative ways to prepare the reader account for the Book
+Store tests, and write a short sketch of the code for each:
+(A) per-test setup: a new account for every test (what the code does now),
+and (B) a shared account per worker (worker-scoped fixture), whose
+collection is emptied before each test. Compare them on: speed (use the
+log), isolation between tests, behaviour with parallel workers, the 'one
+valid token per account' rule, the API + UI test (a UI login replaces the
+token), cleanup when a test fails, and readability. Recommend one for this
+project and say when the other one would be the better choice."
+
+The two sketches (from the AI's answer, shortened)
+-------------------------------------------------
+
+(A) a new account per test - the code at that time:
+
+   reader: async ({ bookstore, accountCleanup }, use) => {
+     const credentials = buildCredentials();
+     const { status, body } = await bookstore.account.create(credentials);
+     expect(status, 'precondition: POST /Account/v1/User').toBe(HttpStatus.CREATED);
+     const reader = { ...credentials, userId: body.userID };
+     accountCleanup.remember(reader);   // closed after the test, also on failure
+     await use(reader);                 // empty collection, no token yet
+   },
+
+(B) one account per worker, the collection emptied before each test:
+
+   workerReader: [async ({ playwright }, use, workerInfo) => {
+     const request = await playwright.request.newContext();  // 'request' is per test
+     ... create the account (name with workerInfo.workerIndex), one session ...
+     await use({ ...credentials, userId, session });
+     ... delete the account, dispose the request context ...
+   }, { scope: 'worker' }],
+
+   reader: async ({ workerReader, readerApi }, use) => {
+     const { ok } = await readerApi.books.deleteAllBooks(workerReader.userId);
+     expect(ok, 'precondition: collection emptied').toBe(true);
+     await use(workerReader);
+   },
+
+The comparison (summary)
+------------------------
+
+                      (A) new account per test     (B) one account per worker
+   speed              pays create + login + close  pays them once per worker;
+                      in every test                AI estimate: 1-5 s instead
+                                                   of 6-10 s per test
+   isolation          full                         only the collection is reset
+   parallel workers   any number                   safe only with one account
+                                                   per worker
+   one-token rule     only the test itself can     a login in one test breaks
+                      replace its token            the token of the next test
+   API + UI test      works naturally              the UI login breaks the
+                                                   shared token
+   failed test        cleanup always runs          books left until the next
+                                                   reset
+   readability        one idea, ~10 lines          two fixture levels and its
+                                                   own request context
+
+Decision - chosen by the learner: (A), a new account per test
+--------------------------------------------------------------
+
+Why:
+- Middle Stage 3 is about independent tests and real business rules;
+  full isolation is worth the time.
+- Two of our tests replace or close the token (the UI test and the
+  journey) - exactly what breaks a shared account.
+- Task 3 already made (A) cheaper by one login per test.
+
+When (B) would be better: dozens of tests that only change the collection,
+or if DemoQA started to limit how fast accounts can be created. Even then,
+tests that log in through the UI or close the account would keep (A).
+
+
+What we changed in the AI's answers
+===================================
+
+The AI drafts were a good start, but not used as they were:
+
+- Expected results were replaced by real ones. The AI wrote "probably" for
+  several answers (S3, S8); each was checked with a real request first.
+- One AI scenario left the answer open (S2: is an old token refused, or
+  valid until it expires?) - the experiment answered it: refused.
+- A "decisive check" suggested by the AI (looking at the browser network
+  request) was replaced by a stronger experiment that separates H1 from H2:
+  adding the book with the browser's own token.
+- I1 was simplified: the AI suggested remembering tokens in the cleanup; we
+  share the whole login session instead, so the interceptor can also
+  recover when a UI login replaced the token.
+- I3 was adjusted: the AI suggested 20 s; DemoQA logins took up to 7 s and
+  the cleanup runs after the test, so 30 s per request and 60 s per test
+  were chosen.
+- Three AI suggestions were not used at all (S1, XSS, I5), each with a
+  reason above.

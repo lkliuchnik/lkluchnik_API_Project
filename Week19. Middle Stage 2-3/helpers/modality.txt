@@ -1,0 +1,109 @@
+API, UI or both - how the test level was chosen
+================================================
+
+Middle Stage 3 evidence: why most Book Store checks are API tests, why one
+test is API + UI, and what each level can and cannot show.
+
+
+In short
+--------
+
+- API tests by default: fast (most requests well under 2 s; only the
+  DemoQA login takes up to 7 s), exact (status, body, error codes), stable, and
+  they can reach things the UI never shows.
+- UI only where the question is "what does the reader SEE" - and then with
+  the data prepared through the API, not by clicking.
+- The one API + UI test (profileUi.spec.ts) proved its worth: building it
+  showed two real things about the app that no API test could show.
+
+
+The rule we used
+----------------
+
+Ask what the check is about:
+
+   about data, rules, status codes, security   -> API test
+   about what the reader sees on the page      -> UI check
+   about both - the UI shows what the API did  -> API setup + UI check
+
+And for the setup of any test: use the API. Creating an account and adding
+books through the UI would take minutes, depend on ads and page loading, and
+would not be what the test is about.
+
+
+Each Book Store test and its level
+----------------------------------
+
+API only
+   readerJourney.spec.ts     the full account and collection flow - 9 steps
+                             checked exactly (status codes and bodies)
+   businessRules.spec.ts     book once, catalog only, owner only, strong
+                             password, unique name - rules inside the API
+   tokens.spec.ts            the newest token only; no password sent back -
+                             tokens are never shown in the UI
+   collection.spec.ts        empty a collection, and who may do it; the
+                             all-or-nothing batch add - the UI adds one book
+                             at a time and cannot use another reader's
+                             token, so it cannot send these requests
+
+API + UI
+   profileUi.spec.ts         API: open an account, add two books.
+                             UI: log in, the profile shows the reader's name
+                             and exactly these two books.
+
+UI only
+   none - the earlier UI project (weeks 4, 5 and 9: Playwright UI tests of
+   demoqa.com) covers the pages themselves.
+
+
+What the API + UI test showed that API tests could not
+------------------------------------------------------
+
+1. A UI login replaces the account's token
+   The browser login gets a new token, and the token the test got through
+   the API stops working (401). The API tests alone never log in through the
+   browser, so they could not show it. This was the most likely reason why
+   the old UI tests "never saw" books added through the API (ai-review.txt,
+   task 2).
+   Consequence for the test: API setup first, UI login second.
+
+2. The profile loads the collection only when the page loads
+   A book added while the profile is open does not appear until the page is
+   reloaded. Checked with a small experiment (ai-review.txt, task 2, H2).
+   Consequence: open the profile after the data is ready.
+
+3. The page markup changed
+   DemoQA replaced its div-based table with a real <table>. The old CSS
+   selectors no longer find the books, so the page object uses roles
+   (getByRole('table') ... getByRole('link')) instead.
+
+
+What each level costs
+---------------------
+
+   API test     about 5-25 s here, almost all of it for opening and
+                closing the account; the checks themselves take under 1 s
+   API + UI     about 10-20 s: the same account work, plus starting a
+                browser, loading the page and logging in
+   UI only      minutes for the same setup, and the most failure points
+                (ads, slow pages, changed markup)
+
+Because the UI test is slower and depends on the web page, CI runs it in
+its own job (ui-test). A problem with the page cannot hide the results of
+the API tests.
+
+
+When API testing is enough - and when it is not
+-----------------------------------------------
+
+Enough
+   - rules the server enforces (book once, owner only, password rules)
+   - exact error codes and messages
+   - security of answers and tokens
+   - requests the UI cannot send (batch add, another reader's token)
+
+Not enough
+   - "the reader sees their books" - the API can be right while the page
+     shows nothing (point 2 above)
+   - interaction between the browser session and other clients (point 1)
+   - how the page reacts to data (empty lists, long titles, special names)

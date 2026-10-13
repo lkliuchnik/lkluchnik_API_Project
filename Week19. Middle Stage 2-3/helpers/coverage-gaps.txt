@@ -1,0 +1,161 @@
+Coverage gap analysis - DemoQA Book Store
+=========================================
+
+Middle Stage 3 evidence: what the Book Store tests did not cover yet, which
+missing scenarios matter, and which of them were written as tests.
+
+
+In short
+--------
+
+- An AI drafted 10 candidate scenarios from the API documentation and the
+  existing tests (ai-review.txt, task 1). Each one was checked against the
+  real API before deciding.
+- 7 scenarios are kept as real gaps. 4 of them are now tests; 3 stay here
+  as documented gaps, with the reason.
+- Two of the new tests found real defects: a batch add that half-works, and
+  the password sent back inside the token and in the Login answer.
+
+
+Contents
+--------
+
+   What was covered before this analysis
+   How the scenarios were chosen
+   The 7 gaps
+   What was left out, and why
+   Result
+
+
+What was covered before this analysis
+-------------------------------------
+
+   readerJourney.spec.ts   open an account, log in, add books, check them,
+                           replace one, delete one, close the account, check
+                           that the closed account is gone
+   businessRules.spec.ts   a book only once; replace to an owned book (bug);
+                           only catalog books; the collection belongs to its
+                           owner (read, add); strong password; unique name
+   profileUi.spec.ts       books added through the API appear on the profile
+
+
+How the scenarios were chosen
+-----------------------------
+
+1. An AI read the swagger documentation and the existing tests and proposed
+   10 scenarios (S1-S10), each with a risk, a priority and a test level.
+2. Every scenario was tried by hand against demoqa.com (curl), so the
+   decision is based on what the API really does, not on a guess.
+3. A scenario was kept when it protects a real risk that no test covers.
+   It was written as a test when it is cheap to automate and shows a rule
+   or a defect clearly.
+
+
+The 7 gaps
+----------
+
+S1-S10 are the numbers from the AI's draft (ai-review.txt, task 1), kept so
+the two files can be compared. The gaps are listed by decision: tests first,
+then the ones only documented.
+
+   S8        batch add is all or nothing           test (test.fail, defect)
+   S10       the password is never sent back       test (test.fail, defect)
+   S2        only the newest token works           test
+   S7 + S6   emptying a collection; only owner     test
+   S3        a failed login answers 200            documented only
+   S5        documentation vs real answers         documented only
+   S4 + S9   missing fields, wrong ISBN            documented only
+
+S8. Adding a list of books is all or nothing                 -> TEST (test.fail)
+   Endpoint:   POST /BookStore/v1/Books
+   Why:        a request that half-works leaves a collection in a state
+               nobody asked for, and the client cannot tell what happened.
+   Checked:    a list of two ISBNs - one from the catalog, one unknown
+               (0000000000) - answers 201. The answer lists BOTH as added;
+               only the catalog book is really in the collection. A defect.
+   Test:       collection.spec.ts - "adding a list of books is all or
+               nothing: one unknown ISBN adds none of them"
+
+S10. The password is never sent back                          -> TEST (test.fail)
+   Endpoints:  POST /Account/v1/GenerateToken, POST /Account/v1/Login
+   Why:        a password in a token or an answer can be read from logs,
+               browser storage or anything that sees the token.
+   Checked:    the readable middle part of the token (the payload) is
+               {"userName", "password", "iat"} - the password in plain text.
+               Login also returns the password, even for an account that
+               never logged in. A security defect.
+   Test:       tokens.spec.ts - "the password is never sent back - not
+               inside the token, not in the Login answer"
+
+S2. Only the newest token of an account works                 -> TEST
+   Endpoints:  POST /Account/v1/GenerateToken, GET /Account/v1/User/{id}
+   Why:        it decides how tests and clients must handle logins. It is
+               also the cause of the old "books never appear in the UI"
+               problem (ai-review.txt, task 2).
+   Checked:    a second login makes the first token answer 401
+               "User not authorized!"; the second token works.
+   Test:       tokens.spec.ts - "only the newest token of an account works:
+               a new login ends the old token"
+
+S7 + S6. Emptying a collection; nobody else may do it          -> TEST
+   Endpoints:  DELETE /BookStore/v1/Books, DELETE /Account/v1/User/{id}
+   Why:        a documented endpoint that no test used, and the most
+               destructive actions of the store: deleting all books, or the
+               whole account, of someone else.
+   Checked:    the owner gets 204 and the collection is empty (also 204 on
+               an empty collection). No token, or another reader's token:
+               401, and nothing changes.
+   Test:       collection.spec.ts - "the owner can empty the whole
+               collection; without the owner token nobody can"
+
+S3. A failed login answers 200                                -> documented only
+   Endpoint:   POST /Account/v1/GenerateToken
+   Checked:    a wrong password or an unknown user gives 200 with status
+               "Failed" and token null. The documentation says 400.
+   Why not a test now: the code already handles it (BookStoreSession
+               checks the body, not the status). The real problem is that
+               the documentation promises 400; comparing answers with the
+               documentation is planned for later - see S5.
+
+S5. The documentation does not match the real answers         -> documented only
+   Examples:   POST /Account/v1/User documents no 400, but a weak password
+               gives 400; it documents "userId", but the answer has
+               "userID"; GenerateToken documents 400 for errors (see S3).
+   Why not a test now: checking answers against the documentation is
+               contract testing, a later stage (Middle Stage 4-5).
+
+S4 + S9. Missing fields, and single-book calls with a wrong ISBN -> documented only
+   Examples:   creating an account with an empty body; deleting a book that
+               is not in the collection; replacing with an ISBN that is not
+               in the catalog.
+   Checked:    deleting a book that is not in the collection gives 400 with
+               code 1206 - a clear answer.
+   Why not a test now: lower risk - the rules already covered (catalog only,
+               book once) use the same checks inside the API.
+
+
+What was left out, and why
+--------------------------
+
+S1. Missing, broken or wrong token on every endpoint
+   Mostly covered already: another reader's token is tested on reading,
+   adding, emptying and closing an account, and no token on emptying.
+   Repeating it for every endpoint adds many tests that check the same
+   rule.
+
+A UI check for "Delete All Books" (part of S7)
+   The rule is checked through the API; a UI button test would mostly test
+   the page, which the earlier UI project already did.
+
+The XSS part of S10 (a user name with HTML in it, shown on the profile)
+   A real risk, but it needs a UI test that injects script into a public
+   demo site. Left out on purpose.
+
+
+Result
+------
+
+   Gaps found and kept       7
+   Written as tests          4   (S2, S7 + S6, S8, S10)
+   Real defects found        2   (S8 batch add, S10 password)
+   Documented only           3   (S3, S5, S4 + S9)

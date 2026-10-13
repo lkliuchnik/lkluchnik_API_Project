@@ -2,19 +2,20 @@ What the tests check, and where the API is wrong
 ================================================
 
 This file explains the checks in the tests: which business rules they
-protect, why some checks are written the way they are, and the 5 places where
-DummyJSON does not do what the task asks.
+protect, why some checks are written the way they are, and the 8 places where
+an API does not do what it should (5 in DummyJSON, 3 in DemoQA).
 
 
 In short
 --------
 
-- 40 tests: 35 pass normally, 5 are marked test.fail.
-- The 5 test.fail tests are the same as in week 18: week 19 started as a
-  copy of the week 18 code, and these API problems are still there.
+- 52 tests: 44 pass normally, 8 are marked test.fail.
+- 5 test.fail tests are DummyJSON problems, the same as in week 18 (week 19
+  started as a copy of the week 18 code). 3 are DemoQA Book Store defects
+  found in Middle Stage 3.
 - Locally every test passes in both environments, dev and staging.
 - A test.fail test still checks exactly what the task asks. It is marked
-  because DummyJSON answers differently. Nothing was changed to "make a test
+  because the API answers differently. Nothing was changed to "make a test
   green".
 - The tests check business rules (correct totals, the right owner, the right
   page size), not only the status code.
@@ -24,7 +25,7 @@ Contents
 --------
 
    The main rule
-   Known deviations - 5 tests that fail on purpose
+   Known deviations - 8 tests that fail on purpose
    Checked by hand, not written as a test
    Business rules - more than "200 OK"
    Why the checks are written this way
@@ -35,7 +36,7 @@ The main rule
 
 Every check follows the task text, the same as in week 17.
 
-When DummyJSON does something else:
+When an API does something else:
 - the check is NOT changed,
 - the test is declared as test.fail('title', ...) instead of test('title', ...),
 - a one-line comment above the test names the problem,
@@ -45,11 +46,13 @@ What test.fail does:
 - the test fails, as expected   -> Playwright shows it as passed,
 - the test suddenly passes      -> Playwright shows it as failed.
 
-The second case means DummyJSON was fixed, and this file must be updated.
+The second case means the API was fixed, and this file must be updated.
 
 
-Known deviations - 5 tests that fail on purpose
+Known deviations - 8 tests that fail on purpose
 -----------------------------------------------
+
+DummyJSON (1-5)
 
 1. The full CRUD flow
    Test:    productCrud.spec.ts
@@ -98,6 +101,34 @@ Known deviations - 5 tests that fail on purpose
    Task:    user A must not see user B's data - 403 Forbidden.
    API:     200 - user A gets user B's carts. Any logged-in user can read
             anyone's carts.
+
+DemoQA Book Store (6-8)
+
+6. The same book twice, through "replace"
+   Test:    bookstore/businessRules.spec.ts
+            "replacing a book with one the reader already has is rejected,
+            too"
+   Rule:    a book can be in a collection only once. Adding it twice is
+            rejected (400, code 1210) - replacing another book with it must
+            be rejected too.
+   API:     200 - the book is then in the collection twice. The rule can be
+            bypassed through another endpoint.
+
+7. A list of books is added only half
+   Test:    bookstore/collection.spec.ts
+            "adding a list of books is all or nothing: one unknown ISBN adds
+            none of them"
+   Rule:    a request either works completely or changes nothing.
+   API:     201 - the catalog book is added, the unknown one is not, and the
+            answer claims both were added.
+
+8. The password is sent back
+   Test:    bookstore/tokens.spec.ts
+            "the password is never sent back - not inside the token, not in
+            the Login answer"
+   Rule:    a password goes to the server and never comes back.
+   API:     the token's readable middle part holds the password in plain
+            text, and the Login answer contains it too. A security defect.
 
 
 Checked by hand, not written as a test
@@ -165,6 +196,35 @@ Helpful errors (auth, carts, productCrud, posts, comments)
    Examples: "Access Token is required", "Invalid credentials",
    "Product with id '99999' not found".
 
+In the Book Store rules below, "code 1210" and similar are DemoQA's own error
+numbers. They come in the answer next to the message, and the tests check
+them, so a different error with the same status is not missed.
+
+Book Store - an account's life (bookstore/readerJourney.spec.ts)
+   A new account starts with an empty collection. After a login it counts as
+   authorized. The books in a collection have exactly the catalog details.
+   A closed account can neither log in nor be read.
+
+Book Store - collection rules (bookstore/businessRules.spec.ts,
+collection.spec.ts)
+   - a book can be in a collection only once (code 1210)
+   - only books from the catalog can be added (code 1205)
+   - only the owner can change an account: another reader's token gets 401
+     on read, add, empty and close; no token gets 401 on emptying; the
+     collection stays unchanged
+   - the owner can empty the whole collection
+
+Book Store - accounts and tokens (bookstore/businessRules.spec.ts,
+tokens.spec.ts)
+   - a password must be strong (code 1300)
+   - a user name can be taken only once (406, code 1204)
+   - only the newest token of an account works: a new login ends the old
+     token (401 "User not authorized!")
+
+Book Store - what the reader sees (bookstore/profileUi.spec.ts)
+   After a UI login, the profile shows the reader's name and exactly the
+   books that were added through the API.
+
 
 Why the checks are written this way
 -----------------------------------
@@ -174,14 +234,16 @@ toBeCloseTo(x, 2) for money
    decimal places is the normal way to compare money.
 
 toBeUndefined() for "no data in an error"
-   Checks that an error answer has no products and no token in it.
+   Checks that an error answer has no products, no books and no token in it.
 
 toEqual([]) for "pages do not overlap" and "the next page is empty"
    If it fails, the report shows exactly which products are wrong.
 
-expect.soft only in the CRUD and "change is saved" tests
-   So one test can show all the steps that went wrong. Everywhere else a
-   normal expect stops at the first problem, which is easier to read.
+expect.soft only where one test should show several problems at once
+   The CRUD and "change is saved" tests (every step that went wrong), the
+   batch add test (wrong status AND a wrong answer) and the password test
+   (in the token AND in the Login answer). Everywhere else a normal expect
+   stops at the first problem, which is easier to read.
 
 Response time under 3000 ms (pagination.spec.ts)
    Only a rough check that nothing hangs - not a performance test. The time
@@ -191,11 +253,17 @@ Response time under 3000 ms (pagination.spec.ts)
 
 "precondition:" messages on setup steps
    Steps that only prepare a test (GET /auth/me, GET /users/1, the catalog
-   products) check their own status. The message says it is a precondition,
-   so a broken setup step is easy to tell apart from the real check.
+   products; in the Book Store: opening an account, reading the catalog, a
+   login, adding the first books) check their own status. The message says
+   it is a precondition, so a broken setup step is easy to tell apart from
+   the real check.
 
-   Limit: inside a test.fail test, a failed precondition is also "the
-   expected failure", so on its own it does not turn the run red. In
-   practice the run still turns red, because normal tests use the same
-   steps: login, GET /auth/me and the products. Only GET /users/{id} is
-   used in test.fail tests alone. We accept this (week 18 ai-review.txt, R1).
+   Limit: inside a test.fail test, a failed precondition is hidden - it
+   looks like "the expected failure". It is still noticed, because normal
+   tests use the same setup steps, and those turn red:
+   - DummyJSON: login, GET /auth/me and the products. Only GET /users/{id}
+     is used in test.fail tests alone.
+   - Book Store: opening an account, the catalog, a login and adding books
+     are all used by normal tests too.
+   We accept this (week 18 ai-review.txt, R1; confirmed again in the Stage 3
+   code review, test-plan.txt).

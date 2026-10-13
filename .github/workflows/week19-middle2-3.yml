@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read # the job only reads the code
+  contents: read # the jobs only read the code
 
 concurrency: # a new push cancels the old run of the same branch
   group: week19-${{ github.ref }}
@@ -40,12 +40,40 @@ jobs:
           cache-dependency-path: "Week19. Middle Stage 2-3/package-lock.json"
       - run: npm ci
       - run: npx tsc --noEmit
-      - run: npx playwright test
+      - run: npx playwright test --grep-invert @ui # API tests; the UI test has its own job
         env:
           TEST_ENV: ${{ matrix.environment }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: playwright-report-week19-${{ matrix.environment }}
+          path: "Week19. Middle Stage 2-3/playwright-report/"
+          retention-days: 14
+
+  # The API + UI test needs a browser and depends on the demoqa.com web page, which is slower
+  # and less stable than the APIs. A separate job keeps a UI problem from hiding API results.
+  ui-test:
+    name: ui-test (dev)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: "Week19. Middle Stage 2-3"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: "Week19. Middle Stage 2-3/package-lock.json"
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test --grep @ui
+        env:
+          TEST_ENV: dev
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-week19-ui
           path: "Week19. Middle Stage 2-3/playwright-report/"
           retention-days: 14

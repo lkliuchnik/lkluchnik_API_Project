@@ -19,6 +19,9 @@ In short
 - Settings that differ between environments live in config/environments.ts.
   Choose one with TEST_ENV - no code changes.
 - To test a new endpoint you add one service method and one test.
+- Two APIs use this architecture: DummyJSON (Middle Stage 2) and DemoQA
+  Book Store (Middle Stage 3, added without changing the client or the
+  interceptors). One Book Store test also checks the web page (API + UI).
 
 Words like "interceptor", "fixture" or "seeded data" are explained in
 test-plan.txt, part "Words used in these files".
@@ -29,9 +32,14 @@ Quick start
 
 In this folder:
 
-   npm ci                    install the packages (once)
-   npx playwright test       run all tests in the dev environment
-   npm run test:report       open the HTML report
+   npm ci                              install the packages (once)
+   npx playwright install chromium     install the browser for the one
+                                       API + UI test (once)
+   npx playwright test                 run all tests in the dev environment
+
+A local run prints the results in the terminal. For the HTML report (with
+the request log of each test), run the tests with --reporter=html and then
+npm run test:report. CI always makes the HTML report.
 
 More commands: part 11.
 
@@ -68,8 +76,8 @@ Contents
    HTTP (Playwright's request)
 
 Each layer talks only to the one below it. A test does not know URLs; a
-service does not know about retries; the client does not know what is a
-"correct" answer.
+service does not know about retries; the client does not decide whether an
+answer is correct.
 
 Two named exceptions, on purpose: the smoke test calls the bare client
 (GET /test), and the interceptor tests build their own small clients - they
@@ -96,8 +104,16 @@ test the client itself, so they need to see it.
    assertions/dummyjson/       checks shared by several tests (cart totals)
    tests/dummyjson/            the tests
 
+   services/bookstore/         AccountService, BookStoreService,
+                               BookStoreSession (logs in, for the auth interceptor)
+   models/bookstore/           account.ts, book.ts
+   test-data/bookstore/        buildCredentials() - a new account's login data
+   tests/bookstore/            the tests, one of them API + UI
+   pages/bookstore/            LoginPage, ProfilePage - for the UI part only
+
    fixtures/base.fixture.ts       shared by all APIs: env, the request log
    fixtures/dummyjson.fixture.ts  the DummyJSON services and data
+   fixtures/bookstore.fixture.ts  the Book Store services, new accounts, cleanup
 
 
 3. ApiClient and the interceptors
@@ -132,10 +148,12 @@ auth (api/interceptors/auth.ts)
    If no new token can be got, the test gets that 401 - not an exception.
    A request that brings its own token - even a wrong one - is left alone,
    so tests about tokens keep full control.
-   Where the token comes from is given by the API: a TokenSource. For
-   DummyJSON it is DummyJsonSession: it logs in on the first request, uses
-   /auth/refresh after a 401 (and logs in again if that fails), and never
-   logs in twice when two requests ask at the same time.
+   Each API gives its own TokenSource - the object that gets and renews
+   the token. For DummyJSON it is DummyJsonSession: it logs in on the first
+   request, uses /auth/refresh after a 401 (and logs in again if that
+   fails), and never logs in twice when two requests ask at the same time.
+   For the Book Store it is BookStoreSession: DemoQA has no refresh, so it
+   simply logs in again.
 
 retry (api/interceptors/retry.ts)
    Sends a GET again when the server is briefly unavailable: an answer 502,
@@ -147,7 +165,7 @@ retry (api/interceptors/retry.ts)
 logging (api/interceptors/logging.ts)
    Writes one line per real request, for example
       GET /auth/me -> 401 (212 ms) [token]
-   The lines are attached to the HTML report of each test as "api-log".
+   The lines are attached to each test in the HTML report as "api-log".
    On or off: http.logRequests in the environment.
 
 
@@ -159,15 +177,25 @@ config/environments.ts has one block per environment:
    dev       user emilys,   no retries,  timeout 10 s
    staging   user michaelw, 2 retries,   timeout 15 s
 
+The users are DummyJSON users. The Book Store has no fixed user (each test
+opens its own account) and uses 30 s per request in both environments,
+because a DemoQA login can take up to 7 s.
+
 Request logging is on in both, so a retry in staging is visible in the
 report.
+
+Good to know: staging retries a Book Store GET too. If DemoQA does not
+answer at all, one GET can wait 3 x 30 s - longer than the 60 s a test may
+take. The test then stops with Playwright's "test timeout" instead of the
+client's "no response from the server". Accepted: it happens only when the
+site is down, and the test is red either way.
 
 Choose one when you run the tests:
 
    TEST_ENV=staging npx playwright test        (dev is the default)
 
 One value can be changed without touching the file, with a variable in .env
-or in CI: DUMMYJSON_URL, DUMMYJSON_USERNAME, DUMMYJSON_PASSWORD.
+or in CI: DUMMYJSON_URL, DUMMYJSON_USERNAME, DUMMYJSON_PASSWORD, BOOKSTORE_URL.
 
 A wrong name stops the run with a clear message:
    Unknown TEST_ENV "prod". Use one of: dev, staging
@@ -176,8 +204,9 @@ Note: DummyJSON has only one public server, so both environments use the
 same address. They show the mechanism: another user, other HTTP settings,
 the same code. A real project would put another base URL here.
 
-CI runs every test in both environments (a matrix in
-.github/workflows/week19-middle2-3.yml).
+CI runs the API tests in both environments (a matrix in
+.github/workflows/week19-middle2-3.yml); the API + UI test runs in its own
+job, in dev.
 
 
 5. Fixtures - what a test can ask for
@@ -209,6 +238,37 @@ Which one do I use?
                                                                 ApiClient in the
                                                                 test (see
                                                                 interceptors.spec.ts)
+
+From fixtures/bookstore.fixture.ts:
+   bookstore          Book Store services WITHOUT login (the test passes a token
+                      if it wants one)
+   catalog            the books of the store, read before the test
+   reader             a NEW account, opened before the test and closed after
+                      it. This is the seeded data here: DemoQA saves new data,
+                      so each test makes its own account instead of looking one up.
+   readerApi          services logged in as the reader (auth interceptor)
+   newReader()        opens one more new account, for tests with two readers
+   accountCleanup     the shared hook that closes every account after the test,
+                      also when the test fails. An account it could not close
+                      is marked in the report as "leaked account".
+                      A test that opens an account itself calls remember(), and
+                      forget() if it closed the account on its own.
+
+Which one do I use?
+   The test works with one reader's own data          -> reader + readerApi
+   The test is about tokens or "no login"             -> reader + bookstore,
+                                                         passing the token by hand
+   The test needs a second reader                     -> newReader()
+   The test opens and closes the account itself       -> bookstore +
+                                                         accountCleanup.remember()
+                                                         (see readerJourney.spec.ts)
+   The test needs no account (the catalog, a weak     -> bookstore, catalog
+   password)
+   The test needs a name that is already taken        -> reader + bookstore
+
+DemoQA keeps only the NEWEST token of an account: every new login ends the
+old token. Each reader therefore has one login session, shared by readerApi
+and the cleanup, so neither of them cancels the other one's token.
 
 
 6. How to add a new test
@@ -292,18 +352,30 @@ services or the other tests.
 10. How to add a new API
 ------------------------
 
-(This is how DemoQA BookStore is added in Middle Stage 3.)
+This is how DemoQA Book Store was added in Middle Stage 3 - the files named
+in brackets are the real example.
 
 1. Config (config/environments.ts): add a block for the new API (base URL,
-   test user) to the Environment type and to each environment. If its values
+   and a test user if the API has a fixed one) to the Environment type and
+   to each environment. If its values
    should be changeable from .env or CI, add those lines to
    loadEnvironment(), like the DUMMYJSON_* ones.
+   (bookstore: baseUrl and timeoutMs, no fixed user - tests open their own
+   accounts; the address can be changed with BOOKSTORE_URL)
 2. Folders: services/<api>/, models/<api>/, tests/<api>/, test-data/<api>/.
+   (services/bookstore, models/bookstore, tests/bookstore,
+   test-data/bookstore)
 3. If the API needs a login: a small class that implements TokenSource
    (getToken, refresh), like DummyJsonSession.
+   (BookStoreSession - DemoQA has no refresh token, so refresh() simply
+   logs in again)
 4. Fixture file fixtures/<api>.fixture.ts that extends base.fixture.ts and
    builds its services on createApiClient(...) - so it gets the same headers,
    retries and logging as every other API.
+   (fixtures/bookstore.fixture.ts)
+5. API-specific answer fields go into the API's own models, not into the
+   shared ones. (DemoQA errors carry a "code": models/bookstore/account.ts
+   has BookStoreError, models/common.ts did not change.)
 
 ApiClient, createApiClient and the interceptors stay as they are. An API
 that needs another kind of login header (an API key, a cookie) can send it
@@ -320,9 +392,16 @@ In this folder:
    npx playwright test                   all tests, environment dev
    TEST_ENV=staging npx playwright test  all tests, environment staging
    npx playwright test tests/dummyjson/posts.spec.ts     one file
-   npm run test:report                   open the HTML report
+   npx playwright test --grep-invert @ui  only the API tests
+   npx playwright test --grep @ui        only the API + UI test (needs a
+                                         browser: npx playwright install chromium)
+   npx playwright test --reporter=html   all tests, with the HTML report
+   npm run test:report                   open that HTML report
 
 On Windows PowerShell: $env:TEST_ENV="staging"; npx playwright test
+
+CI runs the API tests in dev and staging, and the API + UI test in its own
+job (ui-test), so a slow or changed web page cannot hide the API results.
 
 
 12. Rules we keep
@@ -333,10 +412,20 @@ On Windows PowerShell: $env:TEST_ENV="staging"; npx playwright test
   does not decide what is right or wrong.
 - Expected values stay in the test (messages, numbers). A helper that also
   checks the status would hide the most important line.
-- Pass a token by hand (api + authToken) only when the test is about tokens;
-  otherwise use authApi.
+- Pass a token by hand only when the test is about tokens (DummyJSON:
+  api + authToken; Book Store: bookstore + a token), or when the test opens
+  the account itself and so has no logged-in fixture (readerJourney.spec.ts).
+  Otherwise use authApi (DummyJSON) or readerApi (Book Store).
+  Exception: the two cart tests from week 18 (carts.spec.ts) still pass the
+  token by hand. They were moved to the new layers without other changes.
 - A test that fails because the API does not do what the task asks is
   declared as test.fail('title', ...), with a one-line comment above it.
   Never test.fail() inside the test.
 - Only add a shared helper when it is a real rule used by several tests
   (like the cart totals). Two similar lines are not a reason for a helper.
+- API + UI tests: prepare the data through the API FIRST, then log in
+  through the UI, then open the page. A UI login replaces the account's
+  token, and a page shows only what was there when it loaded.
+- A test that needs a browser gets the tag @ui.
+- Pages find elements by role or id, not by layout classes - DemoQA
+  changed its table markup once already.

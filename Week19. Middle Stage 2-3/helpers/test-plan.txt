@@ -5,7 +5,7 @@ Middle Stage 2 (reusable API layers) and Middle Stage 3 (end-to-end flows,
 API + UI). One folder, one architecture, two APIs:
 
    DummyJSON          https://dummyjson.com    Middle Stage 2
-   DemoQA BookStore   https://demoqa.com       Middle Stage 3 (not started)
+   DemoQA Book Store  https://demoqa.com       Middle Stage 3
 
 Start here. This file says which task is done where, and where the evidence
 is. How the code works and how to extend it: README.txt.
@@ -14,18 +14,29 @@ is. How the code works and how to extend it: README.txt.
 In short
 --------
 
-- Middle Stage 2 is done. The week 18 tests became a layered architecture
-  that works for more than one API:
-  - a base client with three interceptors: auth, retry, logging;
-  - two environments, dev and staging, switched with TEST_ENV;
-  - one folder per API inside every layer;
-  - shared fixtures: a logged-in client, ready test data, a request log;
-  - new tests written only with the layers.
-- 40 tests: 21 from week 18 and 19 new. Locally all of them pass in both
-  environments. 5 of them are the known "expected to fail" tests from
-  week 18 (assertion-notes.txt).
-- CI is green for both environments, for both Stage 2 commits.
-- Still open: all of Middle Stage 3.
+   Stage            Status                      Tests   CI
+   Middle Stage 2   done                        40      green (dev, staging)
+   Middle Stage 3   done locally, not pushed    +12     after the push
+   Total                                        52      all pass locally,
+                                                        dev and staging
+
+Middle Stage 2 - DummyJSON
+   The week 18 tests became a layered architecture that works for more than
+   one API: a base client with three interceptors (auth, retry, logging),
+   two environments switched with TEST_ENV, one folder per API in every
+   layer, shared fixtures, and new tests written only with the layers.
+   21 tests come from week 18, 19 are new.
+
+Middle Stage 3 - DemoQA Book Store
+   Added to the same architecture without changing the client or the
+   interceptors: a 9-step flow, business rule tests, one API + UI test, a
+   coverage gap analysis with 4 new tests, and four AI-assisted tasks, each
+   checked by hand. Three real defects found: one by a business rule test
+   (replace), two by the gap analysis (batch add, password).
+
+8 of the 52 tests are "expected to fail" (test.fail): 5 DummyJSON problems
+known since week 18, 3 Book Store defects. assertion-notes.txt explains
+each one.
 
 
 The files in helpers/
@@ -36,14 +47,32 @@ README.txt
    service, an environment or a whole new API. Written for a new team member.
 
 assertion-notes.txt
-   What the tests check, the business rules, and the 5 known deviations of
-   DummyJSON.
+   What the tests check, the business rules, and the 8 known deviations
+   (5 DummyJSON, 3 DemoQA).
+
+coverage-gaps.txt     (Stage 3)
+   What the Book Store tests did not cover, which gaps matter, which were
+   written as tests.
+
+modality.txt          (Stage 3)
+   Why most checks are API tests, why one is API + UI, what each level can
+   show.
+
+ai-review.txt         (Stage 3)
+   The four AI-assisted tasks: prompts, a summary of the AI answers, manual
+   checks, decisions.
 
 test-plan.txt
    This file.
 
 screenshots/
    Pictures of the CI runs on GitHub.
+
+Reading order
+   5 minutes    this file: "In short" and the two evidence checklists
+   15 minutes   + assertion-notes.txt, "Known deviations" (what is broken
+                in the APIs) and modality.txt (why API, why UI)
+   to extend    README.txt, parts 5-10
 
 
 Words used in these files
@@ -72,7 +101,8 @@ environment
 
 seeded data
    Test data that is ready before the test starts. DummyJSON does not save
-   new data, so here it is existing data found through the API.
+   new data, so there it is existing data found through the API. DemoQA
+   does save data, so there each test gets a new account of its own.
 
 test.fail
    A Playwright mark: "this test is expected to fail", because the API does
@@ -81,6 +111,30 @@ test.fail
 matrix (CI)
    One CI workflow that runs the same job several times with different
    settings - here once for dev and once for staging.
+
+API + UI test
+   A test that prepares data through the API and then checks the web page
+   in a real browser. Tagged @ui.
+
+coverage gap
+   A risk that no test checks yet.
+
+S1 ... S10
+   The 10 test ideas the AI drafted for the Book Store (ai-review.txt,
+   task 1). The same numbers are used in coverage-gaps.txt and here.
+
+token
+   A long text the server gives after a login. Requests send it to prove
+   who they are. DemoQA keeps only the newest token of an account.
+
+ISBN
+   The number that identifies a book, for example 9781449325862. The Book
+   Store uses it as the book's id.
+
+precondition
+   A step that only prepares a test (open an account, read the catalog).
+   Its check says "precondition:", so a broken setup is easy to tell apart
+   from a real failure.
 
 
 How the work is split into commits
@@ -99,6 +153,10 @@ How the work is split into commits
    no change in the client, the interceptors or the config - that is the
    proof that the architecture can be extended. Its size: 9 files, 212 lines
    added, 0 lines changed or deleted.
+
+4. Middle Stage 3 - one commit after the Stage 2 evidence commit
+   ("Week 19. Middle Stage 2. Green CI run.", 4d5f16f): the DemoQA Book
+   Store services, fixtures, pages, tests and the Stage 3 documents.
 
 
 Middle Stage 2 - the practice tasks
@@ -286,4 +344,159 @@ page shows "before" and "after", all green.
 Middle Stage 3 - the practice tasks
 ===================================
 
-Not started. The plan is in docs/session-log.md, part "Week 19".
+API: DemoQA Book Store (https://demoqa.com), added to the same architecture -
+no change in ApiClient, createApiClient or the interceptors. Why this API and
+not PetStore: DemoQA saves new data, checks the links between resources
+(account, token, collection), has real business rules, and has a web page
+for the API + UI test.
+
+
+Task 1. A 4+ step API flow across related resources
+---------------------------------------------------
+
+Where:   tests/bookstore/readerJourney.spec.ts - one test, 9 steps
+Flow:    open an account -> log in (token, authorized) -> add two catalog
+         books -> the account shows them with the catalog details -> replace
+         one with a third -> delete one -> only the third is left -> close
+         the account -> the closed account can neither log in nor be read
+Related resources: account, token, catalog, collection. Every step uses data
+from the steps before it (user id, token, ISBNs, catalog details).
+
+
+Task 2. At least one combined API + UI test
+-------------------------------------------
+
+Where:   tests/bookstore/profileUi.spec.ts (tag @ui)
+Steps:   API - a new account with two books; UI - log in, the profile shows
+         the reader's name and exactly these two books.
+Pages:   pages/bookstore/LoginPage.ts, ProfilePage.ts
+CI:      its own job, ui-test, which installs the browser.
+
+
+Task 3. Analyze the suite and propose 5 missing scenarios
+---------------------------------------------------------
+
+Where:   coverage-gaps.txt - 7 gaps, each with the risk, what the real API
+         does, and the decision. The AI's first draft and the review are in
+         ai-review.txt, task 1.
+
+
+Task 4. Implement at least 3 of the missing scenarios
+-----------------------------------------------------
+
+Four were implemented (the S-numbers are the AI's draft numbers, see
+coverage-gaps.txt):
+   S2        tokens.spec.ts       only the newest token of an account works
+   S10       tokens.spec.ts       the password is never sent back
+                                  (test.fail - a security defect)
+   S7 + S6   collection.spec.ts   the owner can empty the collection; nobody
+                                  else can
+   S8        collection.spec.ts   a list of books is added all or nothing
+                                  (test.fail - a defect)
+
+
+Task 5. A business rule beyond simple field validation
+------------------------------------------------------
+
+Where:   tests/bookstore/businessRules.spec.ts and collection.spec.ts
+   - a book can be in a collection only once - and the same rule must hold
+     when a book is REPLACED (it does not: test.fail, a defect);
+   - a collection belongs to its owner: another reader can neither read,
+     change, empty nor close it;
+   - a request either works completely or changes nothing (it does not:
+     test.fail, a defect);
+   - the books in a collection have exactly the catalog details
+     (readerJourney.spec.ts, step 4).
+
+
+Task 6. The AI tasks
+--------------------
+
+All in ai-review.txt, with the prompts word for word. What the task asks,
+and where it is:
+
+   task 1     draft scenarios from the API documentation, then review,
+              refine and justify the selection
+   task 2     analyze unstable tests, propose causes, check them by hand
+   task 3     suggest improvements to structure, fixtures or configuration,
+              apply at least one (5 were applied)
+   task 4     compare two alternative implementations (with the AI's code
+              sketches of both), justify the choice
+   last part  refine the AI output and justify the final solution
+              ("What we changed in the AI's answers")
+
+
+Task 7. Why API vs UI vs combined
+---------------------------------
+
+Where:   modality.txt
+
+
+What the task wants to see
+--------------------------
+
+End-to-end API flows designed independently
+   readerJourney.spec.ts: 9 steps across 4 related resources.
+
+Systematic coverage thinking
+   coverage-gaps.txt: what was covered, 10 candidates, each checked against
+   the real API, 7 kept, 4 implemented, the rest with a reason.
+
+When API testing is enough and when UI adds value
+   modality.txt. The API + UI test showed two things API tests could not:
+   a UI login replaces the account's token, and the profile shows only the
+   books that were there when the page loaded.
+
+Business behaviour, not just response structure
+   Three real defects found and kept visible as test.fail: the same book
+   twice through "replace", a half-done batch add, and the password sent
+   back.
+
+
+Code review before the commit
+-----------------------------
+
+Two AI reviewers read the new code separately: one looked for bugs, one for
+the architecture. Every finding was checked in the code before a decision.
+
+Fixed
+   - A test passed a whole reader (with its session and token) where only
+     the user name and password were needed, and all of it went into the
+     request body. AccountService now sends only the user name and password.
+   - The owner test checked "another reader gets 401" but not "and nothing
+     changed". It now also checks that the owner's collection is empty.
+   - The journey test registered its account for cleanup only after two
+     more checks; if one failed, the account was left on the server. It now
+     registers it right after the account is created.
+   - Unused code removed: BookStoreService.getBook() and model fields no
+     test needs.
+   - A failed DemoQA login now shows the HTTP status in the error message.
+   - The comments above the 3 Book Store test.fail tests point to
+     assertion-notes.txt, like the DummyJSON ones.
+
+Not changed, on purpose
+   - "A test.fail test also counts a broken setup step as the expected
+     failure" - a known limit, described in assertion-notes.txt (Limit).
+   - Two possible token races (two logins in the same second, two refreshes
+     at the same time) - nothing in the tests triggers them today.
+   - The fixture names readerApi and bookstore stay: readerApi is logged in
+     as one reader, not as the environment's user like authApi.
+   - The two "a new account is rejected" tests (weak password, taken name)
+     do not register an account for cleanup: none is created. If DemoQA ever
+     accepted one, the test would turn red and that account would stay on
+     the demo site.
+   - A Book Store GET in staging can wait longer than the test timeout when
+     DemoQA is down (README.txt, part 4).
+
+
+Evidence checklist - Middle Stage 3
+-----------------------------------
+
+[x] Multi-step API flow test                   tests/bookstore/readerJourney.spec.ts
+[x] Combined API + UI test                     tests/bookstore/profileUi.spec.ts
+[x] Coverage gap analysis (5+ scenarios)       coverage-gaps.txt (7)
+[x] Implemented missing scenarios              tokens.spec.ts, collection.spec.ts (4)
+[x] Why API vs UI vs combined                  modality.txt
+[x] AI tasks with prompts and decisions        ai-review.txt
+[x] All tests pass locally, dev and staging    52 and 52
+[ ] Green CI run (API jobs + ui-test)          after the push
