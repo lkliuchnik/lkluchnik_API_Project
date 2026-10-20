@@ -5,8 +5,9 @@ import { User } from '../../models/dummyjson/user';
 export class AuthService {
   constructor(private readonly client: ApiClient) {}
 
-  login(username: string, password: string) {
-    return this.client.post<LoginResponse>('/auth/login', { data: { username, password } });
+  // expiresInMins: how long the access token lives (DummyJSON default: 60)
+  login(username: string, password: string, expiresInMins?: number) {
+    return this.client.post<LoginResponse>('/auth/login', { data: { username, password, expiresInMins } });
   }
 
   refresh(refreshToken: string) {

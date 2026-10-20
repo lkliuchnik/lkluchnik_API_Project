@@ -20,6 +20,14 @@ export class BookStoreService {
     });
   }
 
+  // Sends the body as given - for negative tests: a missing field or a wrong type.
+  // For a body that is not valid JSON pass a Buffer: it goes byte for byte. A string would be
+  // JSON-encoded by Playwright (the client sends Content-Type: application/json) and arrive
+  // as a valid JSON string.
+  addBooksRaw(body: unknown, token?: string) {
+    return this.client.post<AddedBooks & BookStoreError>('/BookStore/v1/Books', { data: body, token });
+  }
+
   replaceBook(userId: string, oldIsbn: string, newIsbn: string, token?: string) {
     return this.client.put<Account & BookStoreError>(`/BookStore/v1/Books/${oldIsbn}`, {
       data: { userId, isbn: newIsbn },

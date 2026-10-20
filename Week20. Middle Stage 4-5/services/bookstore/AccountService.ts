@@ -45,4 +45,15 @@ export class AccountService {
   delete(userId: string, token?: string) {
     return this.client.delete<BookStoreError>(`/Account/v1/User/${userId}`, { token });
   }
+
+  // The same DELETE with the user name and password (Basic auth) instead of a token. Not in the
+  // DemoQA docs, but it works - also for an account that can never get a token (for example a
+  // too long password: GenerateToken answers 500). Used by the cleanup as the last way out.
+  deleteWithPassword(userId: string, credentials: Credentials) {
+    const { userName, password } = loginData(credentials);
+    const basic = Buffer.from(`${userName}:${password}`).toString('base64');
+    return this.client.delete<BookStoreError>(`/Account/v1/User/${userId}`, {
+      headers: { Authorization: `Basic ${basic}` },
+    });
+  }
 }

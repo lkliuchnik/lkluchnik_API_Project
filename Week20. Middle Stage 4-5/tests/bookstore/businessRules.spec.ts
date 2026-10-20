@@ -4,19 +4,9 @@ import { HttpStatus } from '../../test-data/httpStatus';
 
 // Rules of the book store itself - not "is the field there", but "does the store keep its
 // promises". Each test gets a new reader (an account that really exists) from the fixture.
+// The rules of POST /BookStore/v1/Books (catalog books only, a book once) are in
+// addBooksNegative.spec.ts, together with the other negative tests of that endpoint.
 test.describe('Book store business rules', () => {
-  test('a book can be in a collection only once', async ({ reader, readerApi, catalog }) => {
-    const book = catalog[0];
-    const { status: firstStatus } = await readerApi.books.addBooks(reader.userId, [book.isbn]);
-    expect(firstStatus, 'precondition: the first add works').toBe(HttpStatus.CREATED);
-
-    const { status, body } = await readerApi.books.addBooks(reader.userId, [book.isbn]);
-
-    expect(status).toBe(HttpStatus.BAD_REQUEST);
-    expect(body.code).toBe('1210');
-    expect(body.message).toBe("ISBN already present in the User's Collection!");
-  });
-
   // known deviation: DemoQA allows the same book twice, see assertion-notes.txt
   test.fail('replacing a book with one the reader already has is rejected, too', async ({
     reader,
@@ -33,14 +23,6 @@ test.describe('Book store business rules', () => {
     expect(status).toBe(HttpStatus.BAD_REQUEST);
     const { body: account } = await readerApi.account.getUser(reader.userId);
     expect(account.books.map((book) => book.isbn)).toEqual([first.isbn, second.isbn]);
-  });
-
-  test('only books from the catalog can be added', async ({ reader, readerApi }) => {
-    const { status, body } = await readerApi.books.addBooks(reader.userId, ['0000000000']);
-
-    expect(status).toBe(HttpStatus.BAD_REQUEST);
-    expect(body.code).toBe('1205');
-    expect(body.message).toBe('ISBN supplied is not available in Books Collection!');
   });
 
   test('a collection belongs to its owner: another reader can neither read nor change it', async ({
@@ -68,9 +50,13 @@ test.describe('Book store business rules', () => {
     expect(owner.books).toEqual([]);
   });
 
-  test('an account needs a strong password', async ({ bookstore }) => {
-    const { status, body } = await bookstore.account.create(buildCredentials({ password: 'weak' }));
+  test('an account needs a strong password', async ({ bookstore, accountCleanup }) => {
+    const credentials = buildCredentials({ password: 'weak' });
 
+    const { status, body } = await bookstore.account.create(credentials);
+
+    // if DemoQA ever accepts it, the account must still be closed after the test
+    if (status === HttpStatus.CREATED) accountCleanup.remember({ ...credentials, userId: body.userID });
     expect(status).toBe(HttpStatus.BAD_REQUEST);
     expect(body.code).toBe('1300');
     expect(body.message).toContain('Passwords must have at least one non alphanumeric character');

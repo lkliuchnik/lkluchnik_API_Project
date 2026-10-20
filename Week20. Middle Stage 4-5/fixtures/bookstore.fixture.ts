@@ -68,13 +68,15 @@ export const test = base.extend<BookStoreFixtures>({
 
   // Shared hook: every account a test opens is closed after the test, also when the test fails
   // half-way. It reuses the reader's token; only if that token no longer works (for example
-  // after a UI login) the auth interceptor gets a new one. All accounts are closed at the same
-  // time; one that cannot be closed is marked in the report as "leaked data".
+  // after a UI login) the auth interceptor gets a new one. If no token can be got at all (an
+  // account made by a boundary test), the user name and password are used (Basic auth).
+  // All accounts are closed at the same time; one that cannot be closed is marked in the
+  // report as "leaked data".
   accountCleanup: async ({ request, env, apiLog, bookstore }, use, testInfo) => {
-    const accounts = new Map<string, BookStoreSession>();
+    const accounts = new Map<string, { account: ReaderAccount; session: BookStoreSession }>();
     await use({
       remember: (account, session = new BookStoreSession(bookstore.account, account)) => {
-        accounts.set(account.userId, session);
+        accounts.set(account.userId, { account, session });
       },
       forget: (userId) => {
         accounts.delete(userId);
@@ -82,9 +84,20 @@ export const test = base.extend<BookStoreFixtures>({
     });
 
     const results = await Promise.allSettled(
-      [...accounts].map(async ([userId, session]) => {
-        const { status } = await bookStoreApi(request, env, apiLog, session).account.delete(userId);
-        if (status !== HttpStatus.NO_CONTENT) throw new Error(`DELETE answered ${status}`);
+      [...accounts.values()].map(async ({ account, session }) => {
+        let byToken: string; // what the token way gave, for the report if both ways fail
+        try {
+          const { status } = await bookStoreApi(request, env, apiLog, session).account.delete(account.userId);
+          if (status === HttpStatus.NO_CONTENT) return;
+          byToken = `DELETE answered ${status}`;
+        } catch (error) {
+          byToken = (error as Error).message; // no token could be got - try the password below
+        }
+
+        const { status } = await bookstore.account.deleteWithPassword(account.userId, account);
+        if (status !== HttpStatus.NO_CONTENT) {
+          throw new Error(`with the token: ${byToken}; with the password: DELETE answered ${status}`);
+        }
       }),
     );
     results.forEach((result, i) => {
