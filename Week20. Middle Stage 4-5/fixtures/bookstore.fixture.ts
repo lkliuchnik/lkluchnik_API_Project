@@ -69,7 +69,7 @@ export const test = base.extend<BookStoreFixtures>({
   // Shared hook: every account a test opens is closed after the test, also when the test fails
   // half-way. It reuses the reader's token; only if that token no longer works (for example
   // after a UI login) the auth interceptor gets a new one. All accounts are closed at the same
-  // time; one that cannot be closed is marked in the report as "leaked account".
+  // time; one that cannot be closed is marked in the report as "leaked data".
   accountCleanup: async ({ request, env, apiLog, bookstore }, use, testInfo) => {
     const accounts = new Map<string, BookStoreSession>();
     await use({
@@ -90,7 +90,7 @@ export const test = base.extend<BookStoreFixtures>({
     results.forEach((result, i) => {
       if (result.status === 'rejected') {
         const userId = [...accounts.keys()][i];
-        testInfo.annotations.push({ type: 'leaked account', description: `${userId}: ${result.reason}` });
+        testInfo.annotations.push({ type: 'leaked data', description: `${userId}: ${result.reason}` });
       }
     });
   },

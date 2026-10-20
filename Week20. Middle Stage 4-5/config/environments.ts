@@ -24,22 +24,27 @@ export interface Environment {
     baseUrl: string; // no fixed user: tests open their own accounts
     timeoutMs: number; // DemoQA logins (GenerateToken) can take 7 s, longer than other APIs
   };
+  petstore: {
+    baseUrl: string; // public shared server: tests create their own pets and users with unique ids
+  };
   http: HttpSettings;
 }
 
-// DummyJSON and DemoQA have one public server each, so both environments use the same addresses.
+// DummyJSON, DemoQA and PetStore have one public server each, so both environments use the same addresses.
 // They differ in the test user, the retries and the timeout.
 const environments: Record<EnvironmentName, Environment> = {
   dev: {
     name: 'dev',
     dummyjson: { baseUrl: 'https://dummyjson.com', username: 'emilys', password: 'emilyspass' },
     bookstore: { baseUrl: 'https://demoqa.com', timeoutMs: 30_000 },
+    petstore: { baseUrl: 'https://petstore.swagger.io/v2' },
     http: { timeoutMs: 10_000, retries: 0, retryDelayMs: 0, logRequests: true },
   },
   staging: {
     name: 'staging',
     dummyjson: { baseUrl: 'https://dummyjson.com', username: 'michaelw', password: 'michaelwpass' },
     bookstore: { baseUrl: 'https://demoqa.com', timeoutMs: 30_000 },
+    petstore: { baseUrl: 'https://petstore.swagger.io/v2' },
     http: { timeoutMs: 15_000, retries: 2, retryDelayMs: 500, logRequests: true },
   },
 };
@@ -62,6 +67,9 @@ function loadEnvironment(): Environment {
     bookstore: {
       baseUrl: process.env.BOOKSTORE_URL || chosen.bookstore.baseUrl,
       timeoutMs: chosen.bookstore.timeoutMs,
+    },
+    petstore: {
+      baseUrl: process.env.PETSTORE_URL || chosen.petstore.baseUrl,
     },
   };
 }
