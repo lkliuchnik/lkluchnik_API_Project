@@ -1,0 +1,79 @@
+name: API tests — Week 20 (Middle Stage 4-5)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Week20. Middle Stage 4-5/**"
+      - ".github/workflows/week20-middle4-5.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Week20. Middle Stage 4-5/**"
+      - ".github/workflows/week20-middle4-5.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read # the jobs only read the code
+
+concurrency: # a new push cancels the old run of the same branch
+  group: week20-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false # one red environment does not stop the other
+      matrix:
+        environment: [dev, staging] # the same code, two environments (config/environments.ts)
+    defaults:
+      run:
+        working-directory: "Week20. Middle Stage 4-5"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: "Week20. Middle Stage 4-5/package-lock.json"
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx playwright test --grep-invert @ui # API tests; the UI test has its own job
+        env:
+          TEST_ENV: ${{ matrix.environment }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-week20-${{ matrix.environment }}
+          path: "Week20. Middle Stage 4-5/playwright-report/"
+          retention-days: 14
+
+  # The API + UI test needs a browser and depends on the demoqa.com web page, which is slower
+  # and less stable than the APIs. A separate job keeps a UI problem from hiding API results.
+  ui-test:
+    name: ui-test (dev)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: "Week20. Middle Stage 4-5"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: "Week20. Middle Stage 4-5/package-lock.json"
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test --grep @ui
+        env:
+          TEST_ENV: dev
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-week20-ui
+          path: "Week20. Middle Stage 4-5/playwright-report/"
+          retention-days: 14
