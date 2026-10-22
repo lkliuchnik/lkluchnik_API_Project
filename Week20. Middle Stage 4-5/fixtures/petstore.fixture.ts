@@ -3,6 +3,7 @@ import { ApiClient } from '../api/ApiClient';
 import { createApiClient } from '../api/createApiClient';
 import { PetService } from '../services/petstore/PetService';
 import { PetStoreUserService } from '../services/petstore/PetStoreUserService';
+import { StoreService } from '../services/petstore/StoreService';
 import { HttpStatus } from '../test-data/httpStatus';
 
 // All PetStore services on one client. A new service is added here - one line.
@@ -10,6 +11,7 @@ function servicesFor(client: ApiClient) {
   return {
     pets: new PetService(client),
     users: new PetStoreUserService(client),
+    store: new StoreService(client),
   };
 }
 

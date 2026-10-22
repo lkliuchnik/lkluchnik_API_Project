@@ -35,19 +35,5 @@ test.describe('Collection changes', () => {
     expect(emptied.books).toEqual([]);
   });
 
-  // gap S8. known deviation: only the good book is added, see assertion-notes.txt
-  test.fail('adding a list of books is all or nothing: one unknown ISBN adds none of them', async ({
-    reader,
-    readerApi,
-    catalog,
-  }) => {
-    const good = catalog[0];
-
-    const { status, body } = await readerApi.books.addBooks(reader.userId, [good.isbn, '0000000000']);
-
-    expect.soft(status).toBe(HttpStatus.BAD_REQUEST);
-    expect.soft(body.books, 'the answer must not claim that the unknown ISBN was added').toBeUndefined();
-    const { body: account } = await readerApi.account.getUser(reader.userId);
-    expect(account.books).toEqual([]);
-  });
+  // gap S8 (a list with an unknown ISBN) is in bulkAdd.spec.ts, with the other partial failure tests
 });

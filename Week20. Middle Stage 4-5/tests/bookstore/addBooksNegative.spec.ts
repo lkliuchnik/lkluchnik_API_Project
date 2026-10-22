@@ -1,13 +1,12 @@
 import { test, expect, BookStoreApi } from '../../fixtures/bookstore.fixture';
 import { expectBookStoreError } from '../../assertions/bookstore/errorAssertions';
+import { UNKNOWN_ISBN } from '../../test-data/bookstore/constants';
 import { HttpStatus } from '../../test-data/httpStatus';
 
 // Negative tests for ONE endpoint, POST /BookStore/v1/Books (add books to a collection),
 // in five categories. A correct "no" is 400 (401 for a missing login) with a JSON body
 // { code, message }, and the collection does not change. Where DemoQA answers differently,
 // the test still expects the correct answer and is marked test.fail - see assertion-notes.txt.
-
-const UNKNOWN_ISBN = '0000000000';
 
 async function isbnsOf(api: BookStoreApi, userId: string) {
   const { status, body } = await api.account.getUser(userId);

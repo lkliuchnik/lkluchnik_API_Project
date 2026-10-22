@@ -1,0 +1,111 @@
+A failed run: DemoQA answered "502 Bad Gateway" for a few seconds
+==================================================================
+
+What this file is: the story of one red test run, told step by step, and why we decided
+the fault was in the DemoQA server, not in our tests. The full report is next to this
+file (2026-10-22-staging-demoqa-502.json). Passwords and tokens of the test accounts
+are replaced there with [REDACTED-...]; everything else is as Playwright wrote it.
+
+
+In short
+--------
+
+- When:   22 October 2026, about 08:05 UTC, a local run of the whole API suite.
+- Where:  environment "staging", run like CI (CI=1, so a failed test is retried once).
+- Result: 96 of 97 tests passed, 1 failed. Three test accounts were not deleted.
+- Cause:  for a few seconds DemoQA answered every request with "502 Bad Gateway".
+- Type:   infrastructure failure - not a bug in our tests, not a bug in DemoQA's
+          own logic.
+- After:  the same run again, a few minutes later: 97 of 97 passed, nothing left over.
+
+
+What happened, step by step
+---------------------------
+
+1. 08:04:56 - the test "a reader opens an account, builds and changes a collection,
+   then closes the account" (readerJourney.spec.ts) starts. All its steps work:
+   account created, token received, books added, replaced, deleted.
+
+2. About 08:05:16 - its last step closes the account:
+     DELETE /Account/v1/User/ad094db3-...  -> 502 (62 ms)
+   The test expected 204, got 502, and failed.
+
+3. The same seconds - two other tests (tokens.spec.ts) finish their work and try to
+   delete their accounts. Both get 502 too:
+     DELETE /Account/v1/User/0f88198a-...  -> 502 (50 ms)
+     DELETE /Account/v1/User/a0006ecc-...  -> 502 (50 ms)
+
+4. The cleanup tries the second way for each account - user name and password
+   (Basic auth). Also 502. So each test gets a "leaked data" note in the report,
+   with both reasons, for example:
+     with the token: DELETE answered 502; with the password: DELETE answered 502
+
+5. 08:05:17 - Playwright retries the failed readerJourney test (retries: 1).
+   This time it stops at the very first request, reading the book catalog:
+     GET /BookStore/v1/Books -> 502 (178 ms)
+     GET /BookStore/v1/Books -> 502 (52 ms)
+     GET /BookStore/v1/Books -> 502 (50 ms)
+   These are our own retries: in staging a GET that gets 502 is sent again
+   up to 2 more times, 500 ms apart. The outage lasted longer than that.
+
+6. The retry fails too, so the test is reported as failed and the run is red.
+
+
+Why we say "infrastructure", not "test" and not "environment"
+-------------------------------------------------------------
+
+Three kinds of failure we tell apart:
+- test           - our test code or test data is wrong;
+- environment    - the settings of the run are wrong (address, user, password, token);
+- infrastructure - a server or the network between us is down or overloaded.
+
+What points to infrastructure here:
+- The error page itself says who answered: "502 Bad Gateway, nginx/1.17.10 (Ubuntu)".
+  That is the web server in front of DemoQA saying "the application behind me does
+  not answer". DemoQA's own errors look different: JSON like {"code": "1200", ...}.
+- The answers came in about 50 ms. DemoQA itself needs more: about 150 ms for the
+  catalog, 0.5 to 5 seconds to log in or delete an account (the same run shows it).
+  So the requests never reached the application.
+- Different tests, different endpoints (catalog, delete account, login) - all failed
+  in the same few seconds. A test bug breaks one test, not all of them at once.
+- The same tests passed seconds before (the journey test did 9 steps without a
+  problem) and passed again in the next run, without any change in the code.
+- DummyJSON and PetStore tests in the same run were not affected.
+
+Why not "environment": the settings were the same as in every green run - same
+addresses, same accounts, valid tokens (the requests before the outage worked).
+
+
+What worked as designed
+-----------------------
+
+- The retry for GET requests did its job: it tried 3 times and then gave up.
+- The cleanup tried both ways (token, then password) and did not hide the reason:
+  every "leaked data" note says what each way answered.
+- The leaked accounts did not make other tests fail: every test opens its own
+  new account.
+
+
+What was left behind, and what we did
+-------------------------------------
+
+Three new test accounts stayed on the public DemoQA server:
+- a0006ecc-...  deleted by hand afterwards (its password was visible in that test's
+  own failure message) - DELETE answered 204.
+- ad094db3-... and 0f88198a-...  stay there. Their passwords were made up by the
+  factory and not written anywhere, so nobody can delete them. They are empty test
+  accounts on a public demo server - harmless.
+
+
+What we learned
+---------------
+
+- On a public server, a short outage can turn a run red even when everything in the
+  suite is correct. That is why CI has "retries: 1" - and why a red run must be
+  read before anyone "fixes" a test.
+- Only GET is retried today. DELETE could be retried too: deleting the same account
+  twice has the same result as deleting it once (it is idempotent). That would have
+  saved the three cleanups. This is a candidate for the retry rules of Stage 4.
+- A small trap in reading reports: a "leaked data" note of a retried test is stored
+  with that attempt, not with the test. A script that only reads the test-level
+  notes counted 2 leaked accounts instead of 3.

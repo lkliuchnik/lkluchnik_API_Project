@@ -1,6 +1,6 @@
 import { ApiClient } from '../../api/ApiClient';
 import { Account, BookStoreError } from '../../models/bookstore/account';
-import { AddedBooks, BookList } from '../../models/bookstore/book';
+import { AddedBooks, Book, BookList } from '../../models/bookstore/book';
 
 // The catalog, and the books in a reader's collection.
 // Methods that change a collection take the token as optional: the auth interceptor adds it
@@ -10,6 +10,10 @@ export class BookStoreService {
 
   getCatalog() {
     return this.client.get<BookList>('/BookStore/v1/Books');
+  }
+
+  getBook(isbn: string) {
+    return this.client.get<Book & BookStoreError>('/BookStore/v1/Book', { params: { ISBN: isbn } });
   }
 
   addBooks(userId: string, isbns: string[], token?: string) {

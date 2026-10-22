@@ -6,7 +6,8 @@ import { PetStoreUser } from '../../models/petstore/user';
 export class PetStoreUserService {
   constructor(private readonly client: ApiClient) {}
 
-  createWithArray(users: PetStoreUser[]) {
+  // unknown[]: the partial failure tests put invalid items (null, a wrong type) into the list
+  createWithArray(users: unknown[]) {
     return this.client.post<PetStoreMessage>('/user/createWithArray', { data: users });
   }
 

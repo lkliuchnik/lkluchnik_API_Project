@@ -10,6 +10,11 @@ export class PetService {
     return this.client.post<Pet & PetStoreMessage>('/pet', { data: pet });
   }
 
+  // Sends the body as given - for negative tests. A Buffer goes byte for byte (not valid JSON).
+  createRaw(body: unknown) {
+    return this.client.post<Pet & PetStoreMessage>('/pet', { data: body });
+  }
+
   get(id: number | string) {
     return this.client.get<Pet & PetStoreMessage>(`/pet/${id}`);
   }
