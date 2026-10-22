@@ -4,6 +4,8 @@ import { createApiClient } from '../api/createApiClient';
 import { PetService } from '../services/petstore/PetService';
 import { PetStoreUserService } from '../services/petstore/PetStoreUserService';
 import { StoreService } from '../services/petstore/StoreService';
+import { Pet } from '../models/petstore/pet';
+import { buildPet } from '../test-data/petstore/petFactory';
 import { HttpStatus } from '../test-data/httpStatus';
 
 // All PetStore services on one client. A new service is added here - one line.
@@ -25,6 +27,7 @@ type PetStoreCleanup = {
 type PetStoreFixtures = {
   petstore: PetStoreApi;
   petstoreCleanup: PetStoreCleanup;
+  pet: Pet; // a NEW pet, created before the test and deleted after it
 };
 
 export const test = base.extend<PetStoreFixtures>({
@@ -59,6 +62,15 @@ export const test = base.extend<PetStoreFixtures>({
         testInfo.annotations.push({ type: 'leaked data', description: `${deletions[i].what}: ${result.reason}` });
       }
     });
+  },
+
+  // Seeded data that really exists on the server.
+  pet: async ({ petstore, petstoreCleanup }, use) => {
+    const pet = buildPet();
+    petstoreCleanup.pet(pet.id);
+    const { status } = await petstore.pets.create(pet);
+    expect(status, 'precondition: POST /pet').toBe(HttpStatus.OK);
+    await use(pet);
   },
 });
 

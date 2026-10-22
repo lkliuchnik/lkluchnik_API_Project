@@ -26,4 +26,15 @@ export class PetService {
   delete(id: number | string) {
     return this.client.delete<PetStoreMessage>(`/pet/${id}`);
   }
+
+  // multipart/form-data: the fields "file" (the image) and "additionalMetadata" (a description).
+  // The test builds the form, so a negative test can leave a field out or name it wrongly.
+  uploadImage(id: number | string, form: FormData) {
+    return this.client.post<PetStoreMessage>(`/pet/${id}/uploadImage`, { multipart: form });
+  }
+
+  // the same endpoint with a JSON body instead of a form - for the negative test
+  uploadImageAsJson(id: number | string, body: unknown) {
+    return this.client.post<PetStoreMessage>(`/pet/${id}/uploadImage`, { data: body });
+  }
 }

@@ -7,6 +7,7 @@ export interface RequestOptions {
   token?: string; // sent as "Authorization: Bearer <token>"; no token = no header
   headers?: Record<string, string>; // any other header (an API key, a cookie...)
   data?: unknown; // JSON body
+  multipart?: FormData; // multipart/form-data body (fields and files) instead of JSON
   params?: Record<string, number | string>; // query string
 }
 
@@ -71,8 +72,11 @@ export class ApiClient {
   }
 
   private async sendOnce(req: ApiRequest): Promise<ApiResponse<unknown>> {
-    const { token, data, params } = req.options;
+    const { token, data, params, multipart } = req.options;
     const headers: Record<string, string> = { ...this.options.defaultHeaders, ...req.options.headers };
+    // a multipart body needs "multipart/form-data; boundary=..." - Playwright writes that header
+    // itself, so the JSON Content-Type of the client must not be sent with it
+    if (multipart) delete headers['Content-Type'];
     // only "no token" means no header; an empty string is sent as it is
     if (token !== undefined) headers.Authorization = `Bearer ${token}`;
 
@@ -83,6 +87,7 @@ export class ApiClient {
         method: req.method,
         headers,
         data,
+        multipart,
         params,
         timeout: this.options.timeoutMs,
       });
