@@ -60,16 +60,21 @@ test.describe('Boundaries: user name + password length (login token)', () => {
     expect(readStatus).toBe(HttpStatus.OK);
   });
 
-  // known deviation: the account is created (201), but GenerateToken answers 500 - it can never log in
-  test.fail(`above the maximum: an account of ${MAX_NAME_AND_PASSWORD + 1} characters that was created can log in`, async ({
+  // known deviation: the account is created (201), but GenerateToken answers 500 - it can never log in.
+  // The rule holds for both correct designs: refused at creation with 400, or created and able to log in.
+  test.fail(`above the maximum: ${MAX_NAME_AND_PASSWORD + 1} characters are refused, or the account can log in`, async ({
     bookstore,
     accountCleanup,
   }) => {
     const { userName } = buildCredentials();
     const credentials = { userName, password: passwordOfLength(MAX_NAME_AND_PASSWORD + 1 - userName.length) };
-    const { status, body } = await bookstore.account.create(credentials);
-    expect(status, 'precondition: POST /Account/v1/User').toBe(HttpStatus.CREATED);
-    accountCleanup.remember({ ...credentials, userId: body.userID });
+    const response = await bookstore.account.create(credentials);
+    if (response.status !== HttpStatus.CREATED) {
+      // a correct design too: a too-long account is refused as a client error, not left half-made
+      await expectBookStoreError(response, { status: HttpStatus.BAD_REQUEST });
+      return;
+    }
+    accountCleanup.remember({ ...credentials, userId: response.body.userID });
 
     const { status: tokenStatus, body: tokenAnswer } = await bookstore.account.generateToken(credentials);
 

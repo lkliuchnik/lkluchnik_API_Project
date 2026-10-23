@@ -1,0 +1,128 @@
+Three runs in a row on the final code: is the test suite stable?
+================================================================
+
+What this file is: the evidence for the Middle Stage 4 task "Demonstrate that all tests are
+stable across 3 consecutive runs", made on the FINAL Stage 4 code - after the review fixes,
+the date boundary tests and the idempotency tests. The same check on the earlier code
+(140 tests) is in 2026-10-22-three-runs.txt. The three full Playwright reports are next to
+this file (2026-10-23-run-1.json, -2, -3); passwords and tokens of the test accounts are
+replaced there with [REDACTED-...].
+
+
+In short
+--------
+
+- 3 full runs, one right after the other, on 23 October 2026, 10:16 - 10:26 UTC.
+- Every run: 154 of 154 tests as expected, 0 failed, 0 flaky, no leaked data.
+- Retries were switched off, so a test that fails even once would have made a run red.
+- The 36 tests marked test.fail (known API deviations) failed at the same check, with the
+  same expected value, all three times.
+- Right after them, one staging run (API tests, as in CI): 153 of 153 as expected.
+- Honest note: a first attempt the same morning was stopped - its second run was red
+  because DemoQA did not answer for a few minutes (see "An earlier attempt" below).
+
+
+How the runs were made
+----------------------
+
+Command (from the week 20 folder), three times in a row:
+  CI=1 TEST_ENV=dev npx playwright test --retries=0 --reporter=json
+
+- CI=1           - run as in the pipeline (CI settings of playwright.config.ts); the
+                   options of this command replace its retry and reporter.
+- TEST_ENV=dev   - the dev environment (config/environments.ts).
+- --retries=0    - no second chance. A test that passes only on a retry would fail here.
+- All tests      - DummyJSON, DemoQA and PetStore API tests, the local job server tests,
+                   the 1-minute token test (@slow) and the API + UI test (@ui).
+- 4 workers in parallel, fullyParallel: true - the order of the tests and the worker
+  each one runs on differ from run to run.
+
+Before the runs, DemoQA was checked by hand: the catalog answered in 0.16 s, a new account
+was created in 0.56 s and deleted in 0.63 s - the server was healthy.
+
+
+Results
+-------
+
+Run 1:  start 10:16:14  - 154 expected, 0 failed, 0 flaky - 185 s
+Run 2:  start 10:19:22  - 154 expected, 0 failed, 0 flaky - 190 s
+Run 3:  start 10:22:34  - 154 expected, 0 failed, 0 flaky - 197 s
+
+"Expected" means: 118 tests passed, and 36 tests marked test.fail failed as they should.
+
+Staging, right after (10:25 - 10:29), API tests only, CI settings (one retry allowed):
+        153 expected, 0 failed, 0 flaky, no leaked data - 196 s.
+
+
+What was checked besides the totals
+-----------------------------------
+
+Retries really off:
+  Each report says retries: 0 in its settings.
+
+One attempt per test:
+  No test has more than one result in any report - nothing was run twice.
+
+Same tests every time:
+  The three reports have the same 154 tests (compared by describe block and title).
+
+Same outcome every time:
+  No test changed its status between the runs.
+
+Same reason for every known deviation:
+  Each of the 36 test.fail tests failed at the same check with the same expected value in
+  all three runs (for example "Expected: 400" for the three rejected dates). Only random
+  test data inside the received values differs.
+
+Nothing left on the servers:
+  No "leaked data" note in any run - every account, pet, user and order was deleted.
+
+No fixed waiting:
+  No sleep in the tests. The only timeout change is the 1-minute token test, which gives
+  itself more time than the token lives.
+
+The slowest tests (seconds in run 1 / 2 / 3):
+  63.0 / 62.9 / 62.6  the 1-minute token test - it waits for the token to expire
+  26.9 / 24.7 / 27.0  the API + UI test (a browser login on demoqa.com)
+  22.7 / 17.4 / 29.2  emptying a DemoQA collection (two accounts, several logins)
+  The times differ because the public servers answer at different speeds; the results
+  do not, because no check depends on how fast an answer comes (except the two named
+  week 18 checks, README.txt part 12, which have a wide margin).
+
+
+What is new since 22 October, and also stable here
+--------------------------------------------------
+
+- 8 date boundary tests (PetStore shipDate): 5 pass, 3 test.fail - the same three every run.
+- 2 idempotency tests (PUT twice, DELETE twice): passed every run.
+- The DELETE retry rule and its 3 new tests (DELETE 503, DELETE with no answer, GET 404).
+- Polling up to its exact limit: the 900 ms job is seen as done every run; the limit test
+  counts polls instead of measuring time.
+- The 85-character test that accepts both correct designs.
+
+
+An earlier attempt the same morning
+-----------------------------------
+
+A first series started at 10:02, on the code before the last documentation fixes:
+- run 1: 153 of 153 as expected, clean;
+- run 2: 13 DemoQA tests failed - "POST /Account/v1/User - no response from the server"
+  after 30 s, and 502 answers for creating accounts and reading the catalog. Every other
+  API was fine in the same run.
+The series was stopped there: the code was about to change anyway, and DemoQA was not
+answering. The same kind of DemoQA trouble had made a staging run red an hour earlier
+(../2026-10-23-staging-demoqa-timeouts.txt). When DemoQA was healthy again, the three
+runs above were made on the final code.
+
+Why this is mentioned: "three clean runs" is only honest if the runs that were not clean
+are shown too. They failed for one reason outside our code - a public server that did not
+answer - and the report showed that reason directly.
+
+
+What these three runs do not prove
+----------------------------------
+
+- The public servers can still fail, as the earlier attempt shows. A red run on a public
+  server must be read before anyone "fixes" a test.
+- The runs were made in dev. Staging was run once right after (green) and runs on every
+  CI push.

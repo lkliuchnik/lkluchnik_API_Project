@@ -1,4 +1,5 @@
 import { randomInt } from 'crypto';
+import { Order } from '../../models/petstore/order';
 import { Pet } from '../../models/petstore/pet';
 import { PetStoreUser } from '../../models/petstore/user';
 
@@ -20,6 +21,18 @@ export function buildPet(overrides: Partial<Pet> = {}): Pet {
     status: 'available',
     category: { id: 1, name: 'Dogs' },
     tags: [{ id: 1, name: 'qa-sandbox' }],
+    ...overrides,
+  };
+}
+
+export function buildOrder(overrides: Partial<Order> = {}): Order {
+  return {
+    id: uniqueId(),
+    petId: 1,
+    quantity: 1,
+    shipDate: '2026-10-23T10:00:00.000Z',
+    status: 'placed',
+    complete: false,
     ...overrides,
   };
 }

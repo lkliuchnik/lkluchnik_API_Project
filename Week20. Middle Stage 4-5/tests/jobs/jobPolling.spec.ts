@@ -44,12 +44,29 @@ test.describe('Background jobs - polling', () => {
 
   test('polling has a limit: a job longer than the limit is reported, not waited for', async ({ jobs }) => {
     const { body: accepted } = await jobs.start({ task: 'very long report', durationMs: 60_000 });
-    const startedAt = Date.now();
 
-    await expect(jobs.waitUntilFinished(accepted.id, { intervalMs: 200, timeoutMs: 1_000 })).rejects.toThrow(
-      /^job job-\d+ is still "(pending|running)" after 1000 ms \(\d+ polls\)$/,
+    const error = await jobs.waitUntilFinished(accepted.id, { intervalMs: 200, timeoutMs: 1_000 }).then(
+      () => new Error('the job ended - it should still be running'),
+      (rejection: Error) => rejection,
     );
-    expect(Date.now() - startedAt, 'gave up near the limit, did not wait for the job').toBeLessThan(3_000);
+
+    const reported = /^job job-\d+ is still "(pending|running)" after \d+ ms \(limit 1000 ms, (\d+) polls\)$/.exec(
+      error.message,
+    );
+    expect(reported, `the limit is reported: ${error.message}`).not.toBeNull();
+    // no clock in the check: the number of polls shows it stopped at the limit - one poll per
+    // interval (0, 200 ... 800 ms) and one at the limit; waiting for the job would need ~300
+    expect(Number(reported?.[2]), 'polls before giving up').toBeLessThanOrEqual(1_000 / 200 + 1);
+  });
+
+  test('a job that ends just before the limit is seen as done, not given up on', async ({ jobs }) => {
+    const { body: accepted } = await jobs.start({ task: 'short report', durationMs: 900 });
+
+    // the poll at 0 ms sees "pending", at 400 and 800 ms "running"; the next pause is cut to the
+    // limit, and the poll at 1000 ms sees "done" (a rule that gave up one interval early would stop at 800)
+    const { job } = await jobs.waitUntilFinished(accepted.id, { intervalMs: 400, timeoutMs: 1_000 });
+
+    expect(job.status).toBe('done');
   });
 
   test('an unknown job id is answered with 404, not with an endless "pending"', async ({ jobs }) => {

@@ -22,6 +22,7 @@ export type PetStoreApi = ReturnType<typeof servicesFor>;
 type PetStoreCleanup = {
   pet(id: number): void; // delete this pet after the test
   user(username: string): void; // delete this user after the test
+  order(id: number): void; // delete this order after the test
 };
 
 type PetStoreFixtures = {
@@ -36,20 +37,23 @@ export const test = base.extend<PetStoreFixtures>({
     await use(servicesFor(client));
   },
 
-  // Shared hook: the server is public, so every pet and user a test makes is deleted after the
-  // test, also when it fails half-way. 404 is fine - the test may have deleted it itself.
-  // Anything else is marked in the report as "leaked data".
+  // Shared hook: the server is public, so every pet, user and order a test makes is deleted
+  // after the test, also when it fails half-way. 404 is fine - the test may have deleted it
+  // itself. Anything else is marked in the report as "leaked data".
   petstoreCleanup: async ({ petstore }, use, testInfo) => {
     const petIds: number[] = [];
     const usernames: string[] = [];
+    const orderIds: number[] = [];
     await use({
       pet: (id) => petIds.push(id),
       user: (username) => usernames.push(username),
+      order: (id) => orderIds.push(id),
     });
 
     const deletions = [
       ...petIds.map((id) => ({ what: `pet ${id}`, run: () => petstore.pets.delete(id) })),
       ...usernames.map((name) => ({ what: `user ${name}`, run: () => petstore.users.delete(name) })),
+      ...orderIds.map((id) => ({ what: `order ${id}`, run: () => petstore.store.deleteOrder(id) })),
     ];
     const results = await Promise.allSettled(
       deletions.map(async ({ run }) => {

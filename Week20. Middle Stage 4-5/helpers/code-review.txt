@@ -2,8 +2,9 @@ Code review of Middle Stage 4
 =============================
 
 What this file is for: the record of every code review made during Middle Stage 4 -
-what was found, what was fixed, what was left on purpose and why - and the plan that
-came out of the final review of the whole stage, made before Stage 5.
+what was found, what was fixed, what was left on purpose and why - the fixes that came
+out of the final review of the whole stage, and what a check against the task text added
+before Stage 5.
 
 
 In short
@@ -16,10 +17,10 @@ In short
 - Step reviews: 36 findings in total. Most were fixed before the commit; the rest were
   left on purpose, with a reason (below).
 - Final review: no serious defect, and no structural refactoring needed before Stage 5.
-  7 small fixes are planned for one commit right after the Stage 4 docs commit; 7 other
-  items belong to Stage 5 work; 3 need nothing.
+  7 small fixes were made in one commit right after the Stage 4 docs commit (part 4);
+  7 other items belong to Stage 5 work; 3 need nothing.
 - Nothing from the final review was changed before the docs commit, on purpose: the
-  stability evidence (three clean runs) and CI run #5 were made on exactly this code.
+  stability evidence (three clean runs) and CI run #5 were made on exactly that code.
 
 
 Contents
@@ -30,7 +31,8 @@ Contents
    3. Final review of the whole stage (23 October 2026)
       3.1 Correctness - F1 to F8
       3.2 Ready for Stage 5? - R1 to R10
-   4. The plan
+   4. The plan, and what was done
+   5. Check against the task text (23 October 2026)
 
 
 1. How a review is done here
@@ -133,8 +135,10 @@ F1. A test.fail test that a fix would not turn red  (checked)
 F2. A server outage in a setup step hides inside test.fail tests
    Where:     the fixtures that prepare data (catalog, reader, pet) and a few setup
               steps in the specs
-   Problem:   if a setup step gets 502, up to 17 test.fail tests count that as their
-              "expected" failure.
+   Problem:   if a setup step gets 502, a test.fail test counts that as its "expected"
+              failure - possible in 17 of the 33 test.fail tests at the time of the
+              review. The same holds for a gateway error on the request under test in a
+              test.fail row that expects an error (dates, upload, PetStore errors).
    Example:   the 22 October outage (reports/2026-10-22-staging-demoqa-502.txt) at the
               wrong moment: the run would show fewer failures than really happened.
    Decision:  Stage 5 - part of the failure classification: a setup step that gets
@@ -144,14 +148,15 @@ F3. "The request failed" is also true for a 502
    Where:     tests/petstore/bulkUsers.spec.ts
    Problem:   the wrong-type test reads "refused" from ok = false, which a 502 also gives.
    Example:   a gateway 502 makes the test pass without the server ever seeing the list.
-   Decision:  after the commit - expect a real error status (4xx or the known 500),
-              not "anything that is not ok".
+   Decision:  after the commit - a 502/503/504 (the gateway, not the PetStore) skips
+              the test with the reason "infrastructure: ...", in both bulk tests and in
+              the GET that checks each user.
 
 F4. Polling gives up one interval too early  (checked)
    Where:     services/jobs/JobService.ts, waitUntilFinished
    Problem:   it stops when "now + interval" passes the limit, and then reports the limit,
               not the real time.
-   Example:   a job of 900 ms, interval 200 ms, limit 1000 ms: it gives up at 800 ms with
+   Example:   a job of 900 ms, interval 400 ms, limit 1000 ms: it gives up at 800 ms with
               "still running after 1000 ms", although the job ends at 900 ms.
    Decision:  after the commit - wait only up to the limit, poll once more at the limit,
               report the real time.
@@ -181,7 +186,10 @@ F7. A check that is always true  (checked)
    Where:     tests/dummyjson/boundaries.spec.ts, "the minimum: 0 answers at once"
    Problem:   it checks "the answer took at least 0 ms".
    Example:   if DummyJSON waited 5 s for delay=0, the test would still pass.
-   Decision:  after the commit - an upper limit for delay 0 (for example under 2 s).
+   Decision:  first an upper limit was added (delay + 3 s). Then removed on the user's
+              decision: the task asks for tests that do not depend on timing. Now the
+              delay 0 test checks only that 0 is accepted (title "the minimum: 0 is
+              accepted"); the 5000 ms test keeps its lower limit (at least 5000 ms).
 
 F8. The job server accepts any job length
    Where:     mocks/jobServer.ts
@@ -204,7 +212,7 @@ places Stage 5 needs (one client, per-API services and checks, shared fixtures, 
 that run in parallel). Most items below are Stage 5 work itself, not a refactoring.
 
 R1. Tags for test suites (smoke, regression, slow, ui)
-   Today:     2 of 140 tests have a tag (@ui, @slow).
+   Today:     2 of 140 tests had a tag at the time of the review (@ui, @slow).
    Plan:      Stage 5, first step - tags in one constant file (a typo would silently
               drop a test from a suite), on describe blocks, and one npm script per suite
               so CI and local runs use the same definition.
@@ -221,7 +229,7 @@ R3. Known deviations readable by tools
               reports do not show it.
    Plan:      Stage 5 - add the reason to the test as an annotation (it shows in every
               report), so the failure triage can tell "known" from "new".
-   Note:      the missing assertion-notes.txt itself was written in this commit.
+   Note:      the missing assertion-notes.txt itself was written in commit 8b6eea6.
 
 R4. Retry DELETE
    The same item as F5. After the commit.
@@ -255,21 +263,38 @@ R10. Similar code in the three APIs
               repeated pieces (service lists, cleanup hooks) do not grow with Stage 5.
 
 
-4. The plan
------------
+4. The plan, and what was done
+------------------------------
 
-Decided on 23 October 2026: first the Stage 4 docs commit, then the fixes. The lists
-below are the proposal from this review.
+Decided on 23 October 2026: first the Stage 4 docs commit (8b6eea6), then the fixes.
 
-After the Stage 4 docs commit - one commit "Week 20. Middle Stage 4. Review fixes."
-   F1   the 85-character test checks the rule in both directions
-   F3   bulkUsers expects a real error status
-   F4   polling waits exactly up to its limit and reports the real time
-   F5   DELETE is retried on 502/503/504 (+ an interceptor test)
-   F7   delay 0 gets an upper time limit
-   F8   the job server refuses a job length a timer cannot hold
-   R2   unique titles in boundaries.spec.ts
-   Then: tsc, the changed specs 3 times, the full suite in dev and staging, a CI run.
+Done - commit "Week 20. Middle Stage 4. Review fixes, date boundaries, idempotency."
+(23 October 2026)
+   F1   accountBoundaries.spec.ts: the 85-character test accepts both correct designs -
+        refused at creation (400), or created and able to log in. New title:
+        "above the maximum: 85 characters are refused, or the account can log in".
+   F3   bulkUsers.spec.ts: 502/503/504 skip the test as "infrastructure" (the POST and
+        the GET of each user). HttpStatus got BAD_GATEWAY and GATEWAY_TIMEOUT.
+   F4   JobService.waitUntilFinished: the last pause is cut to the limit, the last GET
+        is at the limit, the error says the real time. New test: a job of 900 ms with a
+        limit of 1000 ms is seen as done.
+   F5   retry.ts: DELETE is retried on 502/503/504, not on "no answer". Two new tests in
+        interceptors.spec.ts (503 three times; no answer once).
+   F7   boundaries.spec.ts: the delay 0 test no longer checks a time that is always
+        true; no upper time limit (see F7 above).
+   F8   mocks/jobServer.ts: durationMs above 2147483647 is refused with 400.
+   R2   boundaries.spec.ts: "below the minimum: limit -1 / skip -1 / delay -1 is rejected".
+
+How it was checked
+   - tsc clean.
+   - The 5 changed spec files 3 times in a row, retries off: 132 of 132 as expected,
+     0 flaky, no leaked data.
+   - Mutation checks (the code changed on purpose, then put back):
+     the 85-character account refused at creation -> "Expected to fail, but passed"
+     (the run turns red, as it should when DemoQA fixes the bug);
+     the old polling rule -> the new 900 ms test fails with 'still "running" after
+     833 ms'.
+   - The full suite: see part 5.
 
 During Stage 5
    R1 tags and suites, R3 known deviations as annotations, F2 setup failures shown as
@@ -277,3 +302,59 @@ During Stage 5
 
 Not needed
    F6, R9, R10 (reasons above).
+
+
+5. Check against the task text (23 October 2026)
+------------------------------------------------
+
+After the fixes, every point of the Middle Stage 4 task text was compared with the
+tests and the documents. The 6 practice tasks and the 6 pieces of required evidence
+were all covered. Two topics, two document points and one evidence point were not:
+
+Topic: "date boundaries" (part of boundary value analysis)
+   Missing: no test had a date parameter.
+   Added:   tests/petstore/orderDates.spec.ts - 8 tests on shipDate of POST /store/order,
+            checked live first. 5 limits are kept as sent; 3 dates just past a limit are
+            not refused (deviations 34-36: two are "corrected" to other dates, one
+            crashes the server).
+   New:     models/petstore/order.ts, StoreService.createOrder, buildOrder(), and
+            petstoreCleanup.order(id).
+
+Topic: "idempotency" (part of test stability)
+   Missing: only the client's retry rule relied on it; no test checked the server.
+   Added:   tests/petstore/idempotency.spec.ts - PUT /pet twice and DELETE /pet twice
+            leave the same state (2 tests, both pass).
+
+Document: test-plan.txt did not follow the task text
+   It had 8 "tasks" of its own (multipart and the strategy as tasks). Now it follows the
+   task text point by point: topics, the 6 practice tasks with their exact words, the
+   expected demonstration, the completion criteria, the required evidence.
+
+Document: "don't depend on timing"
+   The upper time limit of F7 was removed (see F7). The one named exception is the
+   week 18 response time test, whose purpose is to check the time.
+
+Evidence: the three clean runs were made on the code before these changes
+   Made again on the final code: reports/stability/2026-10-23-three-runs.txt.
+
+A second fact check of the documents and the new tests then found (and we fixed):
+   - Two more upper time limits in the tests. The polling limit test now counts polls
+     instead of measuring time; deletedOn "within 1 minute" (week 18) stays as a named
+     exception - it checks a date in the answer, not the speed of the answer.
+   - The docs said the retry tests show "4xx is not retried", but no test sent a 4xx.
+     New test: "a GET that gets 404 is not sent again".
+   - The date tests now check the status of the GET before comparing the date.
+   - The 900 ms polling test had a title that promised more than it checks; renamed to
+     "a job that ends just before the limit is seen as done, not given up on".
+   - Numbers and wording in the documents (7 BVA parameters, not 8; 6 job tests; the
+     85-character row; the commit name).
+
+How it was checked
+   - tsc clean.
+   - orderDates, idempotency and the delay tests 3 times in a row, retries off: 42 of 42
+     as expected; the 3 new test.fail tests failed at the status check every time
+     (expected 400, received 200 / 200 / 500); no leaked data.
+   - After the second fact check: the changed specs 3 times, 81 of 81 as expected.
+   - The full suite: three clean runs on the final code, 154 of 154 as expected each
+     time, 0 flaky, no leaked data (reports/stability/2026-10-23-three-runs.txt); then
+     one staging run, 153 of 153 as expected.

@@ -1,0 +1,97 @@
+A failed run: DemoQA answered, but very slowly
+==============================================
+
+What this file is: the story of one red test run, and why we decided the fault was in
+the DemoQA server, not in our tests. It also shows a weak spot of our cleanup: it can
+report an account as "leaked" when it was in fact deleted. The raw report is not kept
+here - it holds test-account passwords and adds nothing the lines below do not say.
+
+
+In short
+--------
+
+- When:   23 October 2026, 09:52 - 09:59 UTC, a local run of the API tests.
+- Where:  environment "staging", run like CI (CI=1, so a failed test is retried once).
+- Result: 139 of 142 tests as expected, 3 failed (all DemoQA), 5 "leaked data" notes.
+- Cause:  DemoQA answered every request, but in 5 to 21 seconds instead of the usual
+          0.2 to 5 seconds. Tests ran out of their 60 seconds, requests out of their 30.
+- Type:   infrastructure failure - not a bug in our tests, not in DemoQA's logic.
+- Leaks:  most likely none. The account that could be checked was gone: the "leak" was
+          a false alarm of our cleanup (see below).
+- Before and after: the same code passed 143 of 143 in dev minutes before; DemoQA
+  answered in 0.16 s again right after.
+
+
+What happened
+-------------
+
+Every DemoQA request in those minutes was slow, for example:
+   POST /Account/v1/User           -> 201 in 15 to 21 s   (usual: under 1 s)
+   POST /Account/v1/GenerateToken  -> 200 in 12 to 18 s   (usual: up to 7 s)
+   POST /BookStore/v1/Books        -> 201 in 14 to 21 s
+   GET  /BookStore/v1/Books        -> 200 in 7 to 10 s    (usual: 0.15 s)
+
+Three tests failed, each one twice (the first try and the CI retry), all with
+"Test timeout of 60000ms exceeded":
+   collection.spec.ts     the owner can empty the whole collection
+   readerJourney.spec.ts  a reader opens an account, builds and changes a collection
+   tokens.spec.ts         only the newest token of an account works
+A test that opens an account, logs in twice and closes the account needs 6 to 8 DemoQA
+requests; at 15 s each, 60 s is not enough.
+
+In readerJourney one step also got 401 (replace a book, after 21 s). The same step passed
+in every other run. We could not prove the cause; the most likely one is the slowness
+itself (DemoQA keeps only the newest token of an account, and a login that answered
+late can replace the token the test holds).
+
+
+The "leaked data" notes - and why they were most likely false
+-------------------------------------------------------------
+
+Five tests reported a leaked account, all the same way:
+   with the token:     DELETE /Account/v1/User/{id} -> no response (the client gave up
+                       after 30 s)
+   with the password:  DELETE /Account/v1/User/{id} -> 200
+
+What the 200 means: we asked DemoQA by hand, with a made-up account. A DELETE for a user
+that does not exist answers 200 {"code": "1207", "message": "User Id not correct!"} - not
+204, and not 404. So the password DELETE most likely said "no such user".
+
+The check: one of the five accounts (its user name was in the report) was looked up with
+POST /Account/v1/Authorized -> 404 "User not found!". The account was gone. So the token
+DELETE had worked on the server; only its answer came after our client stopped waiting.
+The other four could not be checked (their user names are not in the report), but they
+show exactly the same pattern.
+
+
+Why "infrastructure"
+--------------------
+
+- Every DemoQA endpoint was slow at the same time, in every test that used DemoQA.
+- DummyJSON and PetStore tests in the same run were not affected.
+- The same code passed in dev minutes before, and DemoQA was fast again right after.
+- Nothing in the settings was wrong: the requests did get answers - correct ones, late.
+
+
+What worked as designed
+-----------------------
+
+- The DELETE that got no answer was NOT sent again. That is the retry rule added the same
+  day (code-review.txt, F5): a DELETE is retried only after 502/503/504, never after "no
+  answer", because the first one may have worked. Here it had - a second token DELETE
+  would only have added a confusing answer.
+- The cleanup still tried the second way (the password) and wrote both answers into the
+  report, so the case could be analysed afterwards.
+
+
+What we learned
+---------------
+
+- A slow server fails tests by time, not by status. The report shows "Test timeout" -
+  together with the request times in the api-log, that is enough to classify it.
+- Our cleanup reads "no answer, then 200" as a leak. A better rule: after a DELETE that
+  got no answer, ask whether the user still exists (POST /Account/v1/Authorized: 404 =
+  gone) before calling it a leak. This belongs to the Stage 5 failure classification
+  (code-review.txt, F2).
+- DemoQA again answers "no such user" with 200 - one more case of the error
+  inconsistency found in Stage 4 (assertion-notes.txt, 21-23).

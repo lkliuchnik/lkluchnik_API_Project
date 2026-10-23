@@ -8,7 +8,7 @@ export type EnvironmentName = 'dev' | 'staging';
 
 export interface HttpSettings {
   timeoutMs: number; // how long one request may take
-  retries: number; // extra attempts for a GET that got 502/503/504 or no answer
+  retries: number; // extra attempts: a GET that got 502/503/504 or no answer, a DELETE that got 502/503/504
   retryDelayMs: number; // pause before each extra attempt
   logRequests: boolean; // write every request to the test report
 }

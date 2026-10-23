@@ -43,6 +43,17 @@ test.describe('Retry interceptor', () => {
     expect(log).toHaveLength(1);
   });
 
+  test('a GET that gets 404 is not sent again - the same request would fail the same way', async ({ request, env }) => {
+    const log: string[] = [];
+    const client = makeClient(request, env.dummyjson.baseUrl, [fastRetry(), loggingInterceptor((l) => log.push(l))]);
+
+    const response = await client.get('/http/404');
+
+    expect(response.status).toBe(HttpStatus.NOT_FOUND);
+    expect(response.attempts).toBe(1);
+    expect(log).toHaveLength(1);
+  });
+
   test('a POST that gets 503 is not sent again', async ({ request, env }) => {
     const log: string[] = [];
     const client = makeClient(request, env.dummyjson.baseUrl, [fastRetry(), loggingInterceptor((l) => log.push(l))]);
@@ -61,6 +72,27 @@ test.describe('Retry interceptor', () => {
 
     await expect(client.get('/products/1')).rejects.toThrow('GET /products/1 - no response from the server');
     expect(log).toEqual(Array(3).fill('GET /products/1 -> no response'));
+  });
+
+  test('a DELETE that keeps getting 503 is sent 3 times - deleting twice changes nothing', async ({ request, env }) => {
+    const log: string[] = [];
+    const client = makeClient(request, env.dummyjson.baseUrl, [fastRetry(), loggingInterceptor((l) => log.push(l))]);
+
+    const response = await client.delete('/http/503');
+
+    expect(response.status).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+    expect(response.attempts).toBe(3);
+    expect(log).toHaveLength(3);
+  });
+
+  test('a DELETE that gets no answer at all is not sent again - the first one may have worked', async ({
+    request,
+  }) => {
+    const log: string[] = [];
+    const client = makeClient(request, 'http://127.0.0.1:1', [fastRetry(), loggingInterceptor((l) => log.push(l))]);
+
+    await expect(client.delete('/products/1')).rejects.toThrow('DELETE /products/1 - no response from the server');
+    expect(log).toEqual(['DELETE /products/1 -> no response']);
   });
 
   test('a GET that succeeds is sent once', async ({ request, env }) => {

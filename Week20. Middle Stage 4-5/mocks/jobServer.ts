@@ -37,6 +37,10 @@ function stateOf(job: StoredJob, now = Date.now()): Job {
     : { id, task, status: 'done', result: `processed: ${task}` };
 }
 
+// The longest time a Node timer can wait (about 24.8 days). A longer one fires after 1 ms,
+// and the webhook would report "done" while GET still says "pending" - so it is refused.
+const MAX_DURATION_MS = 2_147_483_647;
+
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json', ...headers });
   res.end(JSON.stringify(body));
@@ -87,9 +91,12 @@ export async function startJobServer(): Promise<LocalServer> {
 
       if (req.method === 'POST' && path === '/jobs') {
         const body = (await readJson(req)) as Partial<StoredJob> | undefined;
-        const durationOk = typeof body?.durationMs === 'number' && Number.isFinite(body.durationMs) && body.durationMs >= 0;
+        const durationOk =
+          typeof body?.durationMs === 'number' && body.durationMs >= 0 && body.durationMs <= MAX_DURATION_MS;
         if (!body || typeof body.task !== 'string' || !durationOk) {
-          return send(res, 400, { message: 'task (text) and durationMs (a number, 0 or more) are required' });
+          return send(res, 400, {
+            message: `task (text) and durationMs (a number from 0 to ${MAX_DURATION_MS}) are required`,
+          });
         }
         const job: StoredJob = {
           id: `job-${++lastId}`,

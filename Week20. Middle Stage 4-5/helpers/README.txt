@@ -122,10 +122,11 @@ One folder per API inside each layer
    tests/bookstore/
 
    PetStore (new in Stage 4)
-   services/petstore/          PetService, PetStoreUserService, StoreService
-   models/petstore/            pet.ts, user.ts, message.ts (code and type of the
+   services/petstore/          PetService, PetStoreUserService, StoreService (orders)
+   models/petstore/            pet.ts, user.ts, order.ts, message.ts (code and type of the
                                swagger's error object; message is in models/common.ts)
-   test-data/petstore/         petFactory.ts (uniqueId, buildPet, buildPetStoreUser),
+   test-data/petstore/         petFactory.ts (uniqueId, buildPet, buildPetStoreUser,
+                               buildOrder),
                                files.ts (a 1 x 1 PNG made in memory, for the upload)
    assertions/petstore/        the PetStore error check
    fixtures/petstore.fixture.ts
@@ -179,13 +180,15 @@ auth (api/interceptors/auth.ts)
    DummyJsonSession for DummyJSON, BookStoreSession for DemoQA. PetStore needs no login.
 
 retry (api/interceptors/retry.ts)
-   Sends a GET again when the server is briefly unavailable: an answer 502, 503 or 504,
-   or no answer at all (timeout, connection error).
-   Not repeated: POST, PUT, DELETE (could change data twice), 500 (usually a bug that
-   answers the same way every time), 4xx (would fail the same way).
-   How many times: http.retries in the environment.
-   Planned after the Stage 4 docs commit: DELETE on 502/503/504 too (code-review.txt,
-   F5).
+   Sends a request again when the server is briefly unavailable:
+   - GET:     an answer 502, 503 or 504, or no answer at all (timeout, connection error);
+   - DELETE:  an answer 502, 503 or 504 only. Deleting twice ends the same way as
+              deleting once, so a cleanup survives a short outage. Not on "no answer":
+              the first DELETE may have worked, and the second would get a 404.
+   Not repeated: POST (could create the same thing twice); PUT (idempotent, but no
+   request of the tests needs it - kept out until one does); 500 (usually a bug that
+   answers the same way every time); 4xx (would fail the same way).
+   How many times: http.retries in the environment (dev 0, staging 2).
 
 logging (api/interceptors/logging.ts)
    Writes one line per real request, for example
@@ -263,8 +266,8 @@ From fixtures/bookstore.fixture.ts:
 From fixtures/petstore.fixture.ts (new in Stage 4):
    petstore           PetStore services (no login - the public server needs none)
    pet                a NEW pet, created before the test and deleted after it
-   petstoreCleanup    deletes every pet and user the test registered, also when the test
-                      fails: petstoreCleanup.pet(id), petstoreCleanup.user(name).
+   petstoreCleanup    deletes every pet, user and order the test registered, also when
+                      the test fails: petstoreCleanup.pet(id), .user(name), .order(id).
                       404 is fine (the test may have deleted it itself); anything else is
                       marked as "leaked data".
 
@@ -438,6 +441,12 @@ test is retried once.
 - PetStore ids always come from our factory: ids made by the server are too large for a
   JavaScript number.
 - No sleep. Any waiting has an interval and a limit (expect.poll, waitUntilFinished).
+- No upper time limits in checks ("answered within N s"): they make a test depend on the
+  network. A lower limit ("waited at least the delay") is fine. Two exceptions on
+  purpose, both from week 18: "a page of products responds in less than 3000 ms"
+  (pagination.spec.ts - a response time check is what that test is for), and deletedOn
+  "within 1 minute of now" (productCrud.spec.ts - it checks a date in the answer against
+  our clock, not how fast the answer came).
 - Limits that depend on data are read from the API, not written into the test.
 - Only add a shared helper when it is a real rule used by several tests. Two similar
   lines are not a reason for a helper.

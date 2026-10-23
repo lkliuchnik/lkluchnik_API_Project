@@ -24,7 +24,7 @@ const acceptedLimits = [
 ];
 
 test.describe('Boundaries: GET /products limit', () => {
-  test('below the minimum: -1 is rejected', async ({ api }) => {
+  test('below the minimum: limit -1 is rejected', async ({ api }) => {
     const { status, body } = await api.products.getPage(-1, 0);
 
     expect(status).toBe(HttpStatus.BAD_REQUEST);
@@ -54,7 +54,7 @@ const acceptedSkips = [
 ];
 
 test.describe('Boundaries: GET /products skip', () => {
-  test('below the minimum: -1 is rejected', async ({ api }) => {
+  test('below the minimum: skip -1 is rejected', async ({ api }) => {
     const { status, body } = await api.products.getPage(PAGE_SIZE, -1);
 
     expect(status).toBe(HttpStatus.BAD_REQUEST);
@@ -80,7 +80,11 @@ const MAX_DELAY_MS = 5000;
 
 test.describe('Boundaries: GET /test delay', () => {
   const rejected = [
-    { title: 'below the minimum: -1 is rejected', delay: -1, error: 'Delay should be a positive number in milliseconds' },
+    {
+      title: 'below the minimum: delay -1 is rejected',
+      delay: -1,
+      error: 'Delay should be a positive number in milliseconds',
+    },
     {
       title: `above the maximum: ${MAX_DELAY_MS + 1} ms is rejected`,
       delay: MAX_DELAY_MS + 1,
@@ -96,21 +100,24 @@ test.describe('Boundaries: GET /test delay', () => {
     });
   }
 
-  const accepted = [
-    { title: 'the minimum: 0 answers at once', delay: 0 },
-    { title: `the maximum: ${MAX_DELAY_MS} ms is waited for`, delay: MAX_DELAY_MS },
-  ];
-  for (const c of accepted) {
-    test(c.title, async ({ apiClient }) => {
-      const { status, body, durationMs } = await apiClient.get<{ status: string }>('/test', {
-        params: { delay: c.delay },
-      });
+  // No upper time limit in these checks: how fast an answer comes depends on the network,
+  // and a test must not depend on timing. A lower limit is safe - the server must wait.
+  test('the minimum: 0 is accepted', async ({ apiClient }) => {
+    const { status, body } = await apiClient.get<{ status: string }>('/test', { params: { delay: 0 } });
 
-      expect(status).toBe(HttpStatus.OK);
-      expect(body.status).toBe('ok');
-      expect(durationMs).toBeGreaterThanOrEqual(c.delay);
+    expect(status).toBe(HttpStatus.OK);
+    expect(body.status).toBe('ok');
+  });
+
+  test(`the maximum: ${MAX_DELAY_MS} ms is waited for`, async ({ apiClient }) => {
+    const { status, body, durationMs } = await apiClient.get<{ status: string }>('/test', {
+      params: { delay: MAX_DELAY_MS },
     });
-  }
+
+    expect(status).toBe(HttpStatus.OK);
+    expect(body.status).toBe('ok');
+    expect(durationMs, 'the server waited the whole delay').toBeGreaterThanOrEqual(MAX_DELAY_MS);
+  });
 });
 
 // POST /auth/login expiresInMins: how long the access token lives. 1 to 43200 minutes (30 days).

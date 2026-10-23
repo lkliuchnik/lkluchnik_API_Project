@@ -13,9 +13,10 @@ In short
 - An edge case is an input or a situation at the border of what an endpoint is made for:
   a missing field, a value just past a limit, a list with one bad item, a job that is not
   finished yet. Most real bugs live there, because the happy path is what developers try.
-- We use seven techniques, one per Stage 4 task: negative categories, boundary values,
-  bulk partial failure, error consistency, asynchronous operations, multipart upload,
-  and stability.
+- We use seven techniques, one per topic of the Stage 4 task: negative categories,
+  boundary values (numbers, lengths, pages and dates), bulk partial failure, error
+  consistency, asynchronous operations, multipart upload, and stability (with
+  idempotency).
 - For each one we first write down the RULE a correct API follows, then test the real
   API against that rule. When the API breaks the rule, the test stays as it is and is
   marked test.fail.
@@ -64,7 +65,8 @@ Which API for which technique
    DummyJSON           boundaries of query parameters and of the token lifetime. It has
                        clear numeric limits and a real token expiry.
    PetStore            error consistency (its swagger defines ONE error object), bulk
-                       create, multipart upload (the only API with a file upload).
+                       create, multipart upload (the only API with a file upload), date
+                       boundaries (an order's shipDate), idempotency (it saves data).
    Local job server    asynchronous jobs. None of the public APIs has background jobs,
                        so this is a SIMULATION started by the tests (mocks/jobServer.ts).
 
@@ -101,7 +103,8 @@ What we found
 ---------------------------------------------------
 
 Where:   tests/dummyjson/boundaries.spec.ts (20 tests),
-         tests/bookstore/accountBoundaries.spec.ts (4 tests)
+         tests/bookstore/accountBoundaries.spec.ts (4 tests),
+         tests/petstore/orderDates.spec.ts (8 tests)
 
 The technique (boundary value analysis, BVA): for every limit we test the value just
 below it, the value on it, and the value just above it. Bugs hide in "<" written as
@@ -115,14 +118,27 @@ below it, the value on it, and the value just above it. Bugs hide in "<" written
    delay (GET /test)             -1 rejected     0, 5000 ms             5001 rejected
    expiresInMins (login)         0 rejected      1, 43200 minutes       43201 rejected
    password (DemoQA)             7 rejected      8 accepted             -
-   user name + password          -               84 can log in          85 must log in
-   (DemoQA)                                                             too (it cannot)
+   user name + password          -               84 can log in          85: refused (400)
+   (DemoQA)                                                             or can log in -
+                                                                        DemoQA creates it,
+                                                                        and it cannot
+
+A date has no single limit - the calendar has several. For shipDate (PetStore):
+
+   Limit                         On (kept as sent)          Just past (rejected)
+   the end of February           2027-02-28                 2027-02-29 (not a leap year)
+   the leap day                  2028-02-29                 -
+   the end of a year             2026-12-31 23:59:59.999    month 13
+   the range of years            0001-01-01, 9999-12-31     10000-01-01
 
 Rules we keep
 - Limits that come from data are READ from the API ("total" = the number of products),
   never written into the test. If the data changes, the boundary moves with it.
 - "Accepted" is checked by its effect, not only by 200: limit 2 gives exactly 2
-  products; a 1-minute token has exactly 60 seconds between "issued" and "expires".
+  products; a 1-minute token has exactly 60 seconds between "issued" and "expires"; a
+  date is the same date in the answer and in a later GET.
+- A date that does not exist must be refused, not "corrected": a server that turns
+  2027-02-29 into 2027-03-01 gives the client a day it never asked for.
 - "Rejected" is checked with the API's own error message, where the API sends one.
 
 How the DemoQA length limit was found
@@ -195,7 +211,7 @@ Why one check per API, not one for all three
 -------------------------------------------------
 
 Where:   tests/dummyjson/tokenExpiry.spec.ts (1, real server, tag @slow),
-         tests/jobs/jobPolling.spec.ts (5, local simulation)
+         tests/jobs/jobPolling.spec.ts (6, local simulation)
 
 An asynchronous operation answers at once ("accepted") and finishes later. The client
 learns the result by asking again and again (polling) or by being called back
@@ -215,8 +231,9 @@ The simulation: a job server started by the test
 
 Rules for every wait
 - Never a fixed sleep. Always an interval AND a limit.
-- At the limit: stop, and say how far it got ('job job-1 is still "pending" after
-  1000 ms (5 polls)').
+- At the limit: stop, and say how far it got, for example 'job job-1 is still "pending"
+  after 1004 ms (limit 1000 ms, 6 polls)'. The last pause is cut short, so the last poll is
+  at the limit itself - a job that ends just before the limit is still seen.
 - Check the final state and the ORDER of states - never how many polls it took, and
   never that a short state was seen (a slow machine can miss it).
 - An unknown job gets 404, not an endless "pending".
@@ -251,7 +268,8 @@ What it needed in our client
 8. Stability - the same result every time
 -----------------------------------------
 
-Where:   reports/stability/2026-10-22-three-runs.txt (evidence)
+Where:   reports/stability/2026-10-23-three-runs.txt (evidence),
+         tests/petstore/idempotency.spec.ts, tests/dummyjson/interceptors.spec.ts
 
 Edge case tests are easy to make flaky (a test that sometimes passes and sometimes fails):
 they touch limits, time and shared servers. What we do about it:
@@ -263,16 +281,32 @@ they touch limits, time and shared servers. What we do about it:
 - PetStore ids are always set by our factory. Ids made by the server are larger than
   JavaScript can store exactly, so a later GET would hit another pet.
 - No numbers the data can change (limits are read from the API).
-- No fixed waiting (see part 6).
-- Retries only where the network is the problem: a GET that got 502/503/504 or no answer,
-  in staging. Never a 4xx, never a POST - a retry must not hide a bug.
+- No fixed waiting (see part 6), and no upper time limits in checks: how fast an answer
+  comes depends on the network, so "answered within N seconds" would make a test depend
+  on timing. Only lower limits ("the server waited at least 5000 ms") are checked. The
+  polling limit test counts polls instead of measuring time. Two exceptions from week 18:
+  the response time test (pagination.spec.ts, under 3000 ms - checking the time is its
+  whole purpose) and deletedOn "within 1 minute of now" (productCrud.spec.ts - a date in
+  the answer compared with our clock, not the speed of the answer).
+- Retries only where the network is the problem, in staging: a GET that got 502/503/504
+  or no answer, a DELETE that got 502/503/504. Never a 4xx, never a POST - a retry must
+  not hide a bug. The retry rules have their own tests (retry boundaries): what is sent
+  again, what never is, and that it stops after 2 extra tries.
+- Idempotency: a retry is only safe for a request that leaves the same state when it is
+  sent twice. The tests check it on the real server: PUT /pet twice gives the same pet;
+  DELETE /pet twice gives 200, then 404, and nothing else changes. DELETE is NOT sent
+  again after "no answer": the first one may have worked, and the client would then see a
+  404 it cannot explain.
 
-Result: 3 full runs in a row with retries switched off - 140 of 140 as expected, 0 flaky,
-the 33 known deviations failed for the same reason every time.
+Result: 3 full runs in a row on the final code, with retries switched off - 154 of 154
+as expected each time, 0 flaky, the 36 known deviations failed for the same reason every
+time. (The same check on the earlier code, 140 tests, on 22 October: also clean.)
 
 What can still break a run: the public servers. On 22 October DemoQA answered "502 Bad
-Gateway" for a few seconds (reports/2026-10-22-staging-demoqa-502.txt). Our analysis of the
-report showed an infrastructure failure, not a test bug.
+Gateway" for a few seconds (reports/2026-10-22-staging-demoqa-502.txt); on 23 October it
+answered so slowly that requests ran out of time
+(reports/2026-10-23-staging-demoqa-timeouts.txt). In both cases our analysis of the report
+showed an infrastructure failure, not a test bug.
 
 
 9. How a deviation is handled

@@ -2,20 +2,20 @@ What the tests check, and where the APIs are wrong
 ==================================================
 
 What this file is for: it explains the checks in the tests - which rules they protect,
-why some checks are written the way they are - and lists the 33 places where an API does
+why some checks are written the way they are - and lists the 36 places where an API does
 not do what it should. The spec files point here with "see assertion-notes.txt".
 
 
 In short
 --------
 
-- 140 tests: 107 pass normally, 33 are marked test.fail (known API deviations).
-- The 33 deviations: 8 in DummyJSON, 15 in DemoQA Book Store, 10 in PetStore.
-  8 of them are older (weeks 18-19), 25 were found in Middle Stage 4.
+- 154 tests: 118 pass normally, 36 are marked test.fail (known API deviations).
+- The 36 deviations: 8 in DummyJSON, 15 in DemoQA Book Store, 13 in PetStore.
+  8 of them are older (weeks 18-19), 28 were found in Middle Stage 4.
 - A test.fail test still checks exactly what a correct API should do. It is marked because
   the real API answers differently. No check was changed to make a test green.
-- All 33 failed at the same check, with the same values, in three runs in a row
-  (reports/stability/2026-10-22-three-runs.txt).
+- All 36 failed at the same check, with the same expected value, in three runs in a row
+  (reports/stability/2026-10-23-three-runs.txt).
 - The tests check the rule behind an answer - "nothing was added", "the answer lists what
   really happened", "every error has the same shape" - not only the status code.
 
@@ -26,7 +26,7 @@ Contents
    1. The main rule
    2. Known deviations - DummyJSON (1-8)
    3. Known deviations - DemoQA Book Store (9-23)
-   4. Known deviations - PetStore (24-33)
+   4. Known deviations - PetStore (24-36)
    5. Seen by hand, not written as a test
    6. The rules the tests protect
    7. Why the checks are written this way
@@ -213,9 +213,9 @@ week 19.
 
 20. An account that can never log in
    Test:   bookstore/accountBoundaries.spec.ts
-           "above the maximum: an account of 85 characters that was created can log in"
-   Rule:   an account that was created can log in. (Or: an account that could never log
-           in is not created.)
+           "above the maximum: 85 characters are refused, or the account can log in"
+   Rule:   two correct designs, and the test accepts both: the account is refused at
+           creation (400), or it is created and can log in.
    API:    when user name + password together have 85 characters or more, the account
            is created (201), but GenerateToken answers 500 for ever.
    Note:   84 characters work. The token holds the user name and password in plain text,
@@ -245,7 +245,7 @@ week 19.
            codes with both messages.
 
 
-4. Known deviations - PetStore (24-33)
+4. Known deviations - PetStore (24-36)
 --------------------------------------
 
 The PetStore swagger describes one error object for every endpoint:
@@ -271,7 +271,7 @@ The PetStore swagger describes one error object for every endpoint:
 
 27. "Not found" in two ways
    Test:   petstore/errorConsistency.spec.ts
-           "\"not found\" has the same code and type on every endpoint"
+           '"not found" has the same code and type on every endpoint'
    Rule:   the same error has the same code and type everywhere.
    API:    GET of an unknown pet, user or order: code 1, type "error".
            DELETE of an unknown order: code 404, type "unknown".
@@ -312,9 +312,31 @@ The PetStore swagger describes one error object for every endpoint:
 
 33. Two files mixed up
    Test:   petstore/uploadImage.spec.ts
-           "two files in the \"file\" field: the answer does not mix them up"
+           'two files in the "file" field: the answer does not mix them up'
    Rule:   two files are refused (400), or the answer describes one real file.
    API:    200 with the NAME of the second file and the SIZE of the first (3 of 3 tries).
+
+34. A day that does not exist
+   Test:   petstore/orderDates.spec.ts
+           "one day past February: 2027-02-29 is rejected with 400"
+   Rule:   2027 is not a leap year, so 2027-02-29 is not a date: 400.
+   API:    200, and the order is stored with the date 2027-03-01. The client asked for one
+           day and silently got another.
+
+35. A month that does not exist
+   Test:   petstore/orderDates.spec.ts
+           "one month past December: month 13 is rejected with 400"
+   Rule:   there is no month 13: 400.
+   API:    200, and 2026-13-01 is stored as 2027-01-01 - the next year.
+
+36. A year with 5 digits
+   Test:   petstore/orderDates.spec.ts
+           "one year past 9999: 10000-01-01 is rejected with 400"
+   Rule:   the date-time format has 4-digit years, so 10000 is a client error: 400.
+   API:    500 "something bad happened" - the server crashed on the date.
+   Note:   34-36 share one comment above the table of rejected dates. The accepted side of
+           each limit (2027-02-28, 2028-02-29, 2026-12-31 23:59:59.999, 0001-01-01,
+           9999-12-31) is stored exactly as sent.
 
 
 5. Seen by hand, not written as a test
@@ -331,6 +353,10 @@ PetStore
 - Whether an error comes as XML or JSON depends on the Accept header of the request.
 - POST /pet {} answers 200: no field is required. POST /store/order with quantity -1
   answers 200: no range check. findByStatus=nonsense answers 200 [].
+- shipDate "not-a-date" answers 500 (a format error, not a boundary). A date without a
+  time ("2026-10-23") is accepted and stored as midnight UTC.
+- The PetStore writes a UTC moment as "+0000" instead of "Z"
+  ("2026-10-23T10:00:00.000+0000"). The date tests compare the moment, not the spelling.
 
 DummyJSON
 - expiresInMins 0.5 or -1 answers 500 with the message about the MAXIMUM - a wrong message
@@ -396,6 +422,17 @@ Upload: the server says what it understood (petstore/uploadImage.spec.ts)
    The answer names the file, its size in bytes and the description (or "null" when
    no description was sent).
 
+Dates are stored exactly as sent (petstore/orderDates.spec.ts)
+   On each calendar limit - the last day of February, the leap day, the last moment of a
+   year, the smallest and the largest 4-digit year - the date in the answer AND in a later
+   GET is the date that was sent. Just past each limit the order must be refused and not
+   stored (34-36).
+
+The same request twice leaves the same state (petstore/idempotency.spec.ts)
+   PUT /pet twice with the same body: the pet after the second PUT equals the pet after
+   the first. DELETE /pet twice: 200, then 404 - and the pet stays deleted, while another
+   pet is still there unchanged. This is what makes the DELETE retry of the client safe.
+
 
 7. Why the checks are written this way
 --------------------------------------
@@ -444,16 +481,28 @@ What protects us today
 - The same setup steps (open an account, read the catalog, create a pet, log in) are
   used by many normal tests, and those turn red.
 - Several test.fail tests check the rule itself, so a fix in either correct direction
-  is noticed: 11 (bulk answer), 23 (one code, one error), 28 (bulk create).
+  is noticed: 11 (bulk answer), 20 (85 characters), 23 (one code, one error), 28 (bulk
+  create).
+- The bulk create tests (28 and the passing one next to it) are skipped with the reason
+  "infrastructure: ... answered 502" when the PetStore gateway answers 502, 503 or 504 -
+  the server never saw the list, so the rule cannot be judged.
 
-Known weak spots (found in the Stage 4 review, code-review.txt)
-- Deviation 20: the test checks "account created (201)" as a precondition. If DemoQA
-  fixed the bug by refusing the account (400), the test would stay "expected" for ever.
-- A short server outage (502) in a setup step makes up to 17 test.fail tests "expected"
-  instead of red.
-- The plan (code-review.txt): F1 is fixed right after the Stage 4 docs commit; F2 is done in
-  Stage 5, together with the failure classification ("infrastructure" failures in setup
-  steps will be shown as skipped, not hidden).
+Known weak spot (found in the Stage 4 review, code-review.txt, F2)
+- A short server outage (502) in a setup step (open an account, read the catalog, create
+  a pet) still makes a test.fail test "expected" instead of visible - at the time of the
+  review that was possible in 17 of the 33 test.fail tests.
+- The same happens when the request under test itself gets a gateway error (502, 503,
+  504) in a test.fail row that expects an error answer - for example the rejected dates
+  (34-36), the upload rows (29-33) and the PetStore error rows (24-27). Only the bulk
+  create tests skip on a gateway error today.
+- Planned for Stage 5, together with the failure classification: "infrastructure"
+  failures in setup steps will be shown as skipped, not hidden.
+
+Fixed in the review fixes commit
+- Deviation 20 used to check "account created (201)" as a setup step. If DemoQA had
+  fixed the bug by refusing the account, the test would have stayed "expected" for ever.
+  Now it checks the rule in both directions (checked: a refused account turns the run
+  red with "Expected to fail, but passed").
 
 We accepted this limit in week 18 (week 18 helpers/ai-review.txt, R1) and in Stage 3;
 Stage 4 made it smaller by checking rules instead of today's answers.

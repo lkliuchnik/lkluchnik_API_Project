@@ -1,12 +1,17 @@
 import { ApiClient } from '../../api/ApiClient';
 import { PetStoreMessage } from '../../models/petstore/message';
+import { Order } from '../../models/petstore/order';
 
-// Orders of the PetStore. Only what the error consistency tests need: read and delete by id.
+// Orders of the PetStore: create, read and delete by id.
 export class StoreService {
   constructor(private readonly client: ApiClient) {}
 
+  createOrder(order: Order) {
+    return this.client.post<Order & PetStoreMessage>('/store/order', { data: order });
+  }
+
   getOrder(id: number) {
-    return this.client.get<PetStoreMessage>(`/store/order/${id}`);
+    return this.client.get<Order & PetStoreMessage>(`/store/order/${id}`);
   }
 
   deleteOrder(id: number) {

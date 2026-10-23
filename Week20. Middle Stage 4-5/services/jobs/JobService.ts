@@ -27,9 +27,10 @@ export class JobService {
   }
 
   // Polling: asks for the job again and again until it has ended (done or failed).
-  // Gives up after timeoutMs with an error that says how far the job got - a test must
-  // never wait forever. Returns the last answer, how many GETs it took and every status
-  // it saw on the way (each one once, in order).
+  // Gives up at timeoutMs with an error that says how far the job got - a test must never
+  // wait forever. The last pause is cut short, so the last GET is sent at the limit itself:
+  // a job that ends just before the limit is still seen as ended. Returns the last answer,
+  // how many GETs it took and every status it saw on the way (each one once, in order).
   async waitUntilFinished(id: string, { intervalMs, timeoutMs }: PollOptions) {
     const startedAt = Date.now();
     const seen: JobStatus[] = [];
@@ -40,10 +41,13 @@ export class JobService {
       if (status !== HttpStatus.OK) throw new Error(`GET /jobs/${id} answered ${status}: ${body.message ?? ''}`);
       if (seen[seen.length - 1] !== body.status) seen.push(body.status);
       if (body.status === 'done' || body.status === 'failed') return { job: body, polls, seen };
-      if (Date.now() - startedAt + intervalMs > timeoutMs) {
-        throw new Error(`job ${id} is still "${body.status}" after ${timeoutMs} ms (${polls} polls)`);
+      const elapsedMs = Date.now() - startedAt;
+      if (elapsedMs >= timeoutMs) {
+        throw new Error(
+          `job ${id} is still "${body.status}" after ${elapsedMs} ms (limit ${timeoutMs} ms, ${polls} polls)`,
+        );
       }
-      await new Promise((wait) => setTimeout(wait, intervalMs));
+      await new Promise((wait) => setTimeout(wait, Math.min(intervalMs, timeoutMs - elapsedMs)));
     }
   }
 }
