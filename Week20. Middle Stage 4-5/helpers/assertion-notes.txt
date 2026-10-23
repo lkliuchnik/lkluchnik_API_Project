@@ -1,0 +1,459 @@
+What the tests check, and where the APIs are wrong
+==================================================
+
+What this file is for: it explains the checks in the tests - which rules they protect,
+why some checks are written the way they are - and lists the 33 places where an API does
+not do what it should. The spec files point here with "see assertion-notes.txt".
+
+
+In short
+--------
+
+- 140 tests: 107 pass normally, 33 are marked test.fail (known API deviations).
+- The 33 deviations: 8 in DummyJSON, 15 in DemoQA Book Store, 10 in PetStore.
+  8 of them are older (weeks 18-19), 25 were found in Middle Stage 4.
+- A test.fail test still checks exactly what a correct API should do. It is marked because
+  the real API answers differently. No check was changed to make a test green.
+- All 33 failed at the same check, with the same values, in three runs in a row
+  (reports/stability/2026-10-22-three-runs.txt).
+- The tests check the rule behind an answer - "nothing was added", "the answer lists what
+  really happened", "every error has the same shape" - not only the status code.
+
+
+Contents
+--------
+
+   1. The main rule
+   2. Known deviations - DummyJSON (1-8)
+   3. Known deviations - DemoQA Book Store (9-23)
+   4. Known deviations - PetStore (24-33)
+   5. Seen by hand, not written as a test
+   6. The rules the tests protect
+   7. Why the checks are written this way
+   8. Limit: a broken setup step inside a test.fail test
+
+
+1. The main rule
+----------------
+
+Every check follows the task text and the way a correct API should behave.
+
+When an API does something else:
+- the check is NOT changed,
+- the test is declared as test.fail('title', ...) instead of test('title', ...),
+- a short "known deviation: ..." comment above the test names the problem (for rows of
+  a table: above the table),
+- the problem is described below, with a number.
+
+What test.fail does:
+- the test fails, as expected   -> Playwright shows it as passed ("expected"),
+- the test suddenly passes      -> Playwright shows it as failed, the run is red.
+
+The second case means the API was fixed (or changed), and this file must be updated.
+
+How each deviation below is written:
+   Test:   the spec file and the test title
+   Rule:   what a correct API does
+   API:    what the real API does (checked live, October 2026)
+   Note:   only when something extra is worth knowing
+
+
+2. Known deviations - DummyJSON (1-8)
+-------------------------------------
+
+DummyJSON is a demo API: it answers a create, change or delete as if it worked, but it
+saves nothing. Deviations 1-5 are known since week 18.
+
+1. The full CRUD flow
+   Test:   dummyjson/productCrud.spec.ts
+           "full CRUD flow: create, read, update, delete, verify absence"
+   Rule:   a created product can be read, changed and deleted.
+   API:    create answers 201 with a new id (like 195), but the product is not saved.
+           Read, update and delete on that id all answer 404.
+   Note:   the steps use expect.soft, so the report shows every step that went wrong.
+           The last step ("the product is gone", 404) passes - only because the product
+           never existed.
+
+2. A change is saved
+   Test:   dummyjson/userData.spec.ts "create a user, change it, and the change persists"
+   Rule:   after a user is changed, reading it again shows the change.
+   API:    create works (201), but update and read on the new id answer 404.
+
+3. No duplicates
+   Test:   dummyjson/userData.spec.ts
+           "creating a user with an existing username and email fails"
+   Rule:   creating the same user twice fails with 409 Conflict ("already exists").
+   API:    201 - the duplicate is created. User names and emails are not checked.
+
+4. A forged token
+   Test:   dummyjson/auth.spec.ts
+           "GET /auth/products with a real token but a forged signature is rejected
+           with 401"
+   Rule:   a request without a valid login gets 401 Unauthorized.
+   API:    500 "invalid signature".
+   Note:   no data comes back, so access is blocked. But 500 means "the server crashed",
+           not "you are not allowed" - monitoring would see a server failure. A random
+           text as token gets the correct 401; only a token that looks real gets 500.
+
+5. One user reads another user's data
+   Test:   dummyjson/auth.spec.ts "user A cannot read the carts of user B"
+   Rule:   user A must not see user B's data - 403 Forbidden.
+   API:    200 - any logged-in user can read anyone's carts.
+
+6. A token for 0 minutes
+   Test:   dummyjson/boundaries.spec.ts, describe "POST /auth/login expiresInMins",
+           "below the minimum: 0 minutes is rejected"
+   Rule:   0 minutes is below the smallest allowed lifetime (1), so the login is refused.
+   API:    200 and a token for 30 days - the LONGEST possible one, not a refusal.
+   Note:   a test that asks for "no lifetime" gets the most dangerous token instead.
+
+7. A token for 43201 minutes
+   Test:   dummyjson/boundaries.spec.ts
+           "above the maximum: 43201 minutes is rejected with 400"
+   Rule:   a value above the maximum (43200 minutes = 30 days) is a client error, 400.
+   API:    500 "Maximum access token expire time can be 43200 minutes".
+   Note:   the message is right, the status is not. 500 says "our fault", 400 says
+           "your fault".
+
+8. An unknown address
+   Test:   dummyjson/errorConsistency.spec.ts
+           "an unknown address: 404 with { message }, like every endpoint"
+   Rule:   every error of an API has the same shape. For DummyJSON that is JSON
+           { "message": "..." }.
+   API:    404 with an HTML page. Every real endpoint answers with { message }.
+
+
+3. Known deviations - DemoQA Book Store (9-23)
+----------------------------------------------
+
+DemoQA errors normally look like { "code": "1205", "message": "..." }. The code is
+DemoQA's own error number, and the tests check it too. Deviations 9-11 are known since
+week 19.
+
+9. The same book twice, through "replace"
+   Test:   bookstore/businessRules.spec.ts
+           "replacing a book with one the reader already has is rejected, too"
+   Rule:   a book can be in a collection only once. Adding it twice is rejected
+           (400, code 1210) - replacing another book with it must be rejected too.
+   API:    200 - the book is then in the collection twice.
+
+10. The password is sent back
+   Test:   bookstore/tokens.spec.ts
+           "the password is never sent back - not inside the token, not in the Login answer"
+   Rule:   a password goes to the server and never comes back.
+   API:    the readable middle part of the token holds the password in plain text, and
+           the Login answer contains it too. A security defect.
+
+11. The answer of a bulk add claims too much
+   Test:   bookstore/bulkAdd.spec.ts
+           "the answer lists only the books that were really added"
+   Rule:   the answer matches what really happened. Two correct designs are possible:
+           an error and nothing added, or success and the answer lists exactly the books
+           that were added. The test accepts both.
+   API:    201, the catalog books are added, the unknown ISBN is dropped silently - and
+           the answer repeats the whole list, the unknown ISBN included.
+   Note:   this is week 19's gap S8, reworded. Week 19 asked for "all or nothing"; Stage 4
+           showed that "partial success" is a valid design too, so the rule was widened.
+
+12. A list of unknown books only
+   Test:   bookstore/bulkAdd.spec.ts
+           "a list of unknown ISBNs only is rejected like a single one"
+   Rule:   two unknown ISBNs are rejected the same way as one: 400, code 1205.
+   API:    201 and nothing added. One unknown ISBN alone gets the correct 400.
+   Note:   DemoQA runs its checks only when the list has ONE book. Deviations 18 and 19
+           have the same cause.
+
+13. No userId
+   Test:   bookstore/addBooksNegative.spec.ts
+           "without userId the request is rejected with 400"
+   Rule:   a missing required field is a client error: 400 with { code, message }.
+   API:    500 with an HTML error page (a database error).
+
+14. No collectionOfIsbns
+   Test:   bookstore/addBooksNegative.spec.ts
+           "without collectionOfIsbns the request is rejected with 400"
+   Rule:   as in 13.
+   API:    500 with an HTML error page.
+
+15. A userId that is not a GUID
+   Test:   bookstore/addBooksNegative.spec.ts
+           "a userId that is not a GUID is rejected with 400"
+   Rule:   a value in the wrong format is a client error: 400.
+   API:    401, code 1207 "User Id not correct!". A format error is reported as a login
+           error.
+
+16. collectionOfIsbns as a string
+   Test:   bookstore/addBooksNegative.spec.ts
+           "collectionOfIsbns sent as a string is rejected with 400"
+   Rule:   a field of the wrong type is a client error: 400.
+   API:    500 with an HTML error page (".map is not a function" - the server code
+           crashed on a string).
+
+17. A body that is not JSON
+   Test:   bookstore/addBooksNegative.spec.ts
+           "a body that is not valid JSON is rejected with a normal error answer"
+   Rule:   400 with the usual { code, message }.
+   API:    the status is right (400), but the body is an HTML page ("SyntaxError").
+   Note:   the test sends the broken text byte for byte (a Buffer). A plain string would
+           be turned into valid JSON by Playwright, and the test would check nothing.
+
+18. The same book twice in one request
+   Test:   bookstore/addBooksNegative.spec.ts
+           "the same book twice in one request is rejected"
+   Rule:   a book can be in a collection only once - also inside one request.
+   API:    201. The answer lists the book twice, the collection gets it once.
+   Note:   on 16 October the book was added twice; on 20 October once. DemoQA changed.
+
+19. Books the reader already has, as a list
+   Test:   bookstore/addBooksNegative.spec.ts "a list of books the reader already has is
+           rejected, too"
+   Rule:   adding a book that is already in the collection is rejected (400, code 1210).
+   API:    one book alone: the correct 400. Two or more: 201, and the answer lists them
+           as added although nothing changed.
+
+20. An account that can never log in
+   Test:   bookstore/accountBoundaries.spec.ts
+           "above the maximum: an account of 85 characters that was created can log in"
+   Rule:   an account that was created can log in. (Or: an account that could never log
+           in is not created.)
+   API:    when user name + password together have 85 characters or more, the account
+           is created (201), but GenerateToken answers 500 for ever.
+   Note:   84 characters work. The token holds the user name and password in plain text,
+           and at 84 it is exactly 255 characters long - most likely a database column
+           of 255 characters. The cleanup deletes such an account with the password
+           (Basic auth), because no token can be got. See also part 8.
+
+21. GenerateToken with a wrong password
+   Test:   bookstore/errorConsistency.spec.ts
+           "POST /Account/v1/GenerateToken - wrong password: 401 with { code, message }"
+   Rule:   a failed login is an error answer: 401 with { code, message }.
+   API:    200 with { token: null, status: "Failed", result: "User authorization failed." }.
+
+22. Login with a wrong password
+   Test:   bookstore/errorConsistency.spec.ts
+           "POST /Account/v1/Login - wrong password: 401 with { code, message }"
+   Rule:   as in 21.
+   API:    200 with an EMPTY body.
+
+23. One error code, several errors
+   Test:   bookstore/errorConsistency.spec.ts
+           "one error code means one error on every endpoint"
+   Rule:   an error code names ONE error, so a client can react to the code.
+   API:    1200 means "User not authorized!" and also "UserName and Password required.";
+           1207 means "User not found!" and also "Collection of books required."
+   Note:   the test collects code -> messages over four answers, so the report shows both
+           codes with both messages.
+
+
+4. Known deviations - PetStore (24-33)
+--------------------------------------
+
+The PetStore swagger describes one error object for every endpoint:
+{ "code": number, "type": text, "message": text }. The tests check that shape.
+
+24. DELETE of an unknown pet
+   Test:   petstore/errorConsistency.spec.ts
+           "DELETE /pet/{id} - unknown id: 404 with { code, type, message }"
+   Rule:   every error has the swagger error shape.
+   API:    404 with an EMPTY body.
+
+25. DELETE of an unknown user
+   Test:   petstore/errorConsistency.spec.ts
+           "DELETE /user/{username} - unknown user: 404 with { code, type, message }"
+   Rule:   as in 24.
+   API:    404 with an EMPTY body.
+
+26. A pet id that is not a number
+   Test:   petstore/errorConsistency.spec.ts
+           "POST /pet - id that is not a number: 400 with { code, type, message }"
+   Rule:   a field of the wrong type is a client error: 400.
+   API:    500 "something bad happened".
+
+27. "Not found" in two ways
+   Test:   petstore/errorConsistency.spec.ts
+           "\"not found\" has the same code and type on every endpoint"
+   Rule:   the same error has the same code and type everywhere.
+   API:    GET of an unknown pet, user or order: code 1, type "error".
+           DELETE of an unknown order: code 404, type "unknown".
+
+28. A bulk create that stops half-way
+   Test:   petstore/bulkUsers.spec.ts
+           "an empty item (null): all users are created, or none of them"
+   Rule:   the answer matches what really happened: success and everybody is there, or
+           an error and nobody is there.
+   API:    500 - but the users BEFORE the empty item are created, the ones after it are
+           not. An error answer for a request that changed data.
+   Note:   the test compares [first exists, last exists] with [ok, ok], so a fix in
+           either correct direction would be noticed.
+
+29. Upload without the file
+   Test:   petstore/uploadImage.spec.ts
+           "without the file part the request is rejected with 400"
+   Rule:   a form without its required part is a client error: 400.
+   API:    500 with an HTML error page.
+
+30. The file under another field name
+   Test:   petstore/uploadImage.spec.ts
+           "a file sent under another field name is rejected with 400"
+   Rule:   as in 29.
+   API:    500 with an HTML error page.
+
+31. JSON instead of a form
+   Test:   petstore/uploadImage.spec.ts
+           "a JSON body instead of a form is rejected with 415 and a normal error answer"
+   Rule:   415 Unsupported Media Type, with the usual error object.
+   API:    the status is right (415), but the body has no message.
+
+32. Upload to a pet that does not exist
+   Test:   petstore/uploadImage.spec.ts
+           "a file for a pet that does not exist is rejected with 404"
+   Rule:   a file for an unknown pet is refused: 404.
+   API:    200 - the file is "uploaded" to a pet that does not exist.
+
+33. Two files mixed up
+   Test:   petstore/uploadImage.spec.ts
+           "two files in the \"file\" field: the answer does not mix them up"
+   Rule:   two files are refused (400), or the answer describes one real file.
+   API:    200 with the NAME of the second file and the SIZE of the first (3 of 3 tries).
+
+
+5. Seen by hand, not written as a test
+--------------------------------------
+
+These were checked live and are worth knowing, but a test would add little.
+
+PetStore
+- GET /pet/abc answers 404 with "java.lang.NumberFormatException..." - the shape is right
+  (that row passes), but the message shows Java internals.
+- uploadImage without a body answers 415 with a Java exception text.
+- A 0-byte file is accepted (200).
+- An uploaded image never shows in the pet's photoUrls - it stays [].
+- Whether an error comes as XML or JSON depends on the Accept header of the request.
+- POST /pet {} answers 200: no field is required. POST /store/order with quantity -1
+  answers 200: no range check. findByStatus=nonsense answers 200 [].
+
+DummyJSON
+- expiresInMins 0.5 or -1 answers 500 with the message about the MAXIMUM - a wrong message
+  for a value that is too small.
+- limit=1.5 gives 1 product (rounded down); skip=-1 is rejected, skip=0 is fine.
+- delay=5000 takes about 5.4 s - the test checks "at least 5000 ms", not an exact time.
+
+DemoQA
+- For an account of exactly 84 characters, a SECOND GenerateToken from our client once
+  answered 200 "User authorization failed." (2 of 2), while 8 calls with curl worked.
+  The cause was not found. The boundary test therefore logs in only once.
+
+
+6. The rules the tests protect
+------------------------------
+
+A 200 only says "the server answered". These checks make sure the answer is right.
+
+Older rules (weeks 18-19, unchanged)
+   Cart totals, carts belong to their user, catalog prices, an update changes only what
+   was sent, pages and page counts, search finds only what matches, posts and comments
+   belong to their author and post, a book once per collection, the owner rules, strong
+   passwords, unique user names, only the newest DemoQA token works.
+   These are explained in week 19, helpers/assertion-notes.txt.
+
+A rejected request changes nothing (bookstore/addBooksNegative.spec.ts)
+   Every passing negative test that sends books (7 of the 8) also reads the collection
+   afterwards and checks that it did not change. A correct "no" with a hidden change
+   would be a defect too.
+
+Errors have one shape per API (*/errorConsistency.spec.ts)
+   DummyJSON: exactly { message }, plain text, not an HTML page.
+   DemoQA:    exactly { code, message }, with the expected DemoQA code.
+   PetStore:  exactly { code: number, type, message }.
+   Each shape is checked by one shared function (assertions/<api>/errorAssertions.ts) in
+   7 to 12 tests per API, so "consistent" really means "the same check everywhere".
+
+Boundaries come from the data, not from memory (dummyjson/boundaries.spec.ts)
+   "total" (the number of products) is read from the API in the test. If DummyJSON adds
+   a product, the boundaries move with it.
+
+A token lives exactly as long as asked (dummyjson/boundaries.spec.ts, tokenExpiry.spec.ts)
+   1 minute and 43200 minutes: the lifetime inside the token (exp - iat) is exactly that.
+   tokenExpiry.spec.ts waits for the real minute: the token works at first, and is
+   refused with "Token Expired!" close to the end of the minute. The test allows 5 s for
+   clock differences; with polls every 5 s that is about 10 s in practice
+   (code-review.txt, F6).
+
+Bulk requests: the answer matches what really happened (bulkAdd, bulkUsers)
+   Every item is checked on the server, not only in the answer (PetStore: a GET per
+   user; DemoQA: the collection is read back).
+   DemoQA: the bad ISBN first, in the middle or last - the good books are added every
+   time, the books already owned stay.
+   PetStore: a wrong field type - the request fails and nobody is created.
+
+Background jobs: only forward, and with a limit (jobs/jobPolling.spec.ts)
+   A job is accepted at once (202) and is "pending" in that answer. Polling sees the
+   states only in order (pending, running, done), each once, and ends with done or
+   failed. A failed job has a reason and no result. Polling gives up at its limit
+   instead of waiting for ever. The webhook brings the same result that polling shows.
+
+Upload: the server says what it understood (petstore/uploadImage.spec.ts)
+   The answer names the file, its size in bytes and the description (or "null" when
+   no description was sent).
+
+
+7. Why the checks are written this way
+--------------------------------------
+
+toEqual on the whole error body
+   The error must have exactly these fields - not more, not fewer. toMatchObject would
+   accept an error with extra fields, or an empty body for "no message expected".
+
+"not an HTML page" in the DummyJSON error check
+   The client turns an HTML answer into { message: "<!DOCTYPE html>..." }. So the check
+   also makes sure the message does not start with "<".
+
+test.step with box: true in the error checks
+   A failed check is reported at the line in the test that called it, not inside the
+   helper - the report points to the endpoint that broke.
+
+Tables of cases (errorConsistency, boundaries)
+   One row = one endpoint (or one value) + the expected answer, and one test per row.
+   Each row is its own test, so one red row does not hide the others.
+
+Separate "rejected" and "accepted" tables in boundaries.spec.ts
+   Each table has only the fields it needs. No optional fields, no "if" in the test body.
+
+Rows that might open an account keep their own login data
+   In bookstore/errorConsistency.spec.ts, a row that sends POST /Account/v1/User keeps
+   the user name and password. If DemoQA ever accepted it, the account can still be
+   closed after the test.
+
+expect.poll with an interval and a limit (tokenExpiry.spec.ts)
+   It asks every 5 seconds and gives up after twice the lifetime. No sleep, no fixed
+   waiting.
+
+"precondition:" messages
+   Steps that only prepare a test (open an account, read the catalog, create a pet)
+   check their own status with a message that starts with "precondition:". A broken
+   setup is easy to tell from the real check.
+
+
+8. Limit: a broken setup step inside a test.fail test
+-----------------------------------------------------
+
+A test.fail test passes when ANY step fails - also a setup step. So inside a test.fail
+test, a broken setup step looks like "the expected failure".
+
+What protects us today
+- The same setup steps (open an account, read the catalog, create a pet, log in) are
+  used by many normal tests, and those turn red.
+- Several test.fail tests check the rule itself, so a fix in either correct direction
+  is noticed: 11 (bulk answer), 23 (one code, one error), 28 (bulk create).
+
+Known weak spots (found in the Stage 4 review, code-review.txt)
+- Deviation 20: the test checks "account created (201)" as a precondition. If DemoQA
+  fixed the bug by refusing the account (400), the test would stay "expected" for ever.
+- A short server outage (502) in a setup step makes up to 17 test.fail tests "expected"
+  instead of red.
+- The plan (code-review.txt): F1 is fixed right after the Stage 4 docs commit; F2 is done in
+  Stage 5, together with the failure classification ("infrastructure" failures in setup
+  steps will be shown as skipped, not hidden).
+
+We accepted this limit in week 18 (week 18 helpers/ai-review.txt, R1) and in Stage 3;
+Stage 4 made it smaller by checking rules instead of today's answers.

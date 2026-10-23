@@ -1,0 +1,125 @@
+Three runs in a row: is the test suite stable?
+==============================================
+
+What this file is: the evidence for the Middle Stage 4 task "Demonstrate that all tests are
+stable across 3 consecutive runs" - how the runs were made, what they showed, what was
+checked besides "all green", and why the tests do not depend on timing or order.
+The three full Playwright reports are next to this file (2026-10-22-run-1.json, -2, -3).
+Passwords and tokens of the test accounts are replaced there with [REDACTED-...].
+
+
+In short
+--------
+
+- 3 full runs, one right after the other, on 22 October 2026, 12:44 - 12:53 UTC.
+- Every run: 140 of 140 tests as expected, 0 failed, 0 flaky.
+- Retries were switched off, so a test that fails even once would have made a run red.
+- The 33 tests marked test.fail (known API deviations) failed for the same reason all
+  three times - the deviations are stable too.
+
+
+How the runs were made
+----------------------
+
+Command (from the week 20 folder), three times in a row:
+  CI=1 TEST_ENV=dev npx playwright test --retries=0 --reporter=json
+
+- CI=1           - run as in the pipeline. In playwright.config.ts it switches on one retry
+                   and the HTML report; both are replaced by the options of this command.
+- TEST_ENV=dev   - the dev environment (config/environments.ts).
+- --retries=0    - no second chance. In CI a failed test is retried once; a test that
+                   passes only on the retry is "flaky". Here such a test would simply fail.
+- All tests      - the API tests of DummyJSON, DemoQA and PetStore, the local job server
+                   tests, the 1-minute token test (@slow) and the API + UI test (@ui).
+- 4 workers in parallel, fullyParallel: true - the tests run in a different order and
+  on different workers each time.
+
+
+Results
+-------
+
+Run 1:  start 12:44:16  - 140 expected, 0 failed, 0 flaky - 197 s
+Run 2:  start 12:47:36  - 140 expected, 0 failed, 0 flaky - 180 s
+Run 3:  start 12:50:38  - 140 expected, 0 failed, 0 flaky - 177 s
+
+"Expected" means: 107 tests passed, and 33 tests marked test.fail failed as they should.
+
+
+What was checked besides the totals
+-----------------------------------
+
+Retries really off:
+  Each report says retries: 0 in its settings.
+
+One attempt per test:
+  No test has more than one result in any report - nothing was run twice.
+
+Same tests every time:
+  The three reports have the same 140 tests (compared by describe block and title).
+
+Same outcome every time:
+  No test changed its status between the runs.
+
+Same reason for every known deviation:
+  Each of the 33 test.fail tests failed at the same check in all three runs, with the same
+  "Expected / Received" values (for example "Expected: 400, Received: 500"). Only the random
+  test data inside some of them differs - a generated password, a product name.
+  A test.fail that fails for a new reason would be a hidden change - none did.
+
+Nothing left on the servers:
+  No "leaked data" note in any run - every account, pet and user a test made was deleted.
+
+The slowest tests (seconds in run 1 / 2 / 3):
+  63.0 / 62.6 / 62.4  the 1-minute token test - it waits for the token to expire
+  35.8 / 22.3 / 22.2  emptying a DemoQA collection (two accounts, several logins)
+  26.5 / 21.9 / 23.9  the API + UI test (a browser login on demoqa.com)
+  The times differ because the public servers answer at different speeds; the results
+  do not, because no check depends on how fast an answer comes.
+
+
+Why the tests are stable: what we did on purpose
+------------------------------------------------
+
+Own data for every test:
+  Each test makes its own DemoQA account, PetStore pet or user, with a unique name or id
+  (random UUID / random id below 2^48). No test reads or changes data of another test,
+  so the order of the tests and running them in parallel do not matter.
+
+Cleanup that always runs:
+  Accounts, pets and users are deleted after the test by fixture hooks, also when the
+  test fails. If deleting with the token fails, DemoQA accounts are deleted with the
+  password (Basic auth). A leftover is reported, not hidden.
+
+No numbers that the data can change:
+  Limits that depend on the data (the number of products) are read from the API in the
+  test, not written into it. Catalog books are read before the test.
+
+No fixed waiting:
+  There is no "sleep" in the tests. Waiting is polling with an interval AND a limit
+  (expect.poll for the token test, waitUntilFinished for the job server). The checks look
+  at the final state, not at how many polls it took or which in-between states a poll saw.
+
+A local server where a real one would be random:
+  The background job tests use a job server started on this computer for each test
+  (a simulation, see mocks/jobServer.ts). The test sets how long a job runs.
+
+Known deviations are pinned, not ignored:
+  test.fail keeps a known API bug visible: the test expects the correct answer. If the
+  API is fixed one day, the test "unexpectedly passes" and the run turns red - a signal
+  to update the notes. Several of them check the rule itself (for example "the answer
+  lists exactly what was added"), so a fix in either correct direction is noticed.
+
+Retries only where the network is the problem:
+  The client retries a GET that got 502/503/504 or no answer (staging only). It never
+  retries a 4xx or a POST, so a real bug cannot be hidden by a retry.
+
+
+What these three runs do not prove
+----------------------------------
+
+- The public servers can still fail. On the same day, a few minutes of "502 Bad Gateway"
+  from DemoQA made one staging run red (see ../2026-10-22-staging-demoqa-502.txt).
+  That was the server, not the tests - and it was visible as such in the report.
+- The runs were made in dev. The staging environment (more retries, longer timeouts,
+  another DummyJSON user) was run many times during the week, green each time except
+  that outage; CI runs both environments on every push.

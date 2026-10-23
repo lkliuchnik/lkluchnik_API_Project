@@ -1,0 +1,279 @@
+Code review of Middle Stage 4
+=============================
+
+What this file is for: the record of every code review made during Middle Stage 4 -
+what was found, what was fixed, what was left on purpose and why - and the plan that
+came out of the final review of the whole stage, made before Stage 5.
+
+
+In short
+--------
+
+- The code was reviewed five times: four times step by step, each time before a commit,
+  and once more as a whole before the Stage 4 docs commit (23 October 2026).
+- The reviews were made by AI agents and every finding was checked in the code by hand
+  before a decision. A finding without a concrete failure scenario was dropped.
+- Step reviews: 36 findings in total. Most were fixed before the commit; the rest were
+  left on purpose, with a reason (below).
+- Final review: no serious defect, and no structural refactoring needed before Stage 5.
+  7 small fixes are planned for one commit right after the Stage 4 docs commit; 7 other
+  items belong to Stage 5 work; 3 need nothing.
+- Nothing from the final review was changed before the docs commit, on purpose: the
+  stability evidence (three clean runs) and CI run #5 were made on exactly this code.
+
+
+Contents
+--------
+
+   1. How a review is done here
+   2. Step reviews (before each Stage 4 commit)
+   3. Final review of the whole stage (23 October 2026)
+      3.1 Correctness - F1 to F8
+      3.2 Ready for Stage 5? - R1 to R10
+   4. The plan
+
+
+1. How a review is done here
+----------------------------
+
+- Who: AI agents, each with one clear focus (bugs; architecture; readiness for the next
+  stage). They only read the code - they do not change files and do not run the tests,
+  because the tests create data on shared public servers.
+- What they get: the diff of the stage, the project rules, and the decisions that were
+  already made (so they do not report them again as new).
+- What we do with a finding: read the code it points to, decide, write the reason down.
+  "Fixed", "rejected" and "planned" each come with a reason.
+- After fixes: tsc, the changed specs 3 to 5 times in a row, the full suite in dev and
+  staging, and a check that every test.fail still fails for its documented reason.
+
+
+2. Step reviews (before each Stage 4 commit)
+--------------------------------------------
+
+Step 1 - PetStore as the third API (8 findings)  ->  commit 88a0856
+   Fixed
+   - Unique ids could repeat: the old id was "time in ms x 1000 + a random number below
+     1000". Now a random number below 2^48, still safe for JavaScript numbers.
+   - The cleanup note is "leaked data" in both the PetStore and the Book Store fixture
+     (it was "leaked account" in one of them).
+   - An unused fixture removed; one model moved to its own file.
+   Left on purpose
+   - Read-after-write delays on the shared PetStore server: never seen (6 of 6 live
+     checks, and every run since).
+   - Promise.all in one test: a loop is easier to read (the same decision as week 18).
+
+Steps 2-4 - cleanup fallback, negative categories, boundaries (8 findings)  ->  b185454
+   Fixed
+   - The "not valid JSON" test sent valid JSON by mistake: Playwright turns a string body
+     into a JSON string. Now the bytes are sent as they are (a Buffer), and DemoQA really
+     fails to read them.
+   - The cleanup keeps the reason of the token way for the "leaked data" note.
+   - Two tests that expect "account refused" now register the account for cleanup in
+     case DemoQA accepts it one day.
+   Left on purpose
+   - Setup checks inside test.fail tests (assertion-notes.txt, part 8) - a known limit.
+
+Steps 5-6 - bulk requests, error consistency (10 findings)  ->  fe2a6f4
+   Fixed
+   - A bulk test read "user does not exist" from any status that was not 200. Now only
+     200 and 404 are trusted; anything else (like 502) stops the test with a clear error.
+   - Three test.fail tests were rewritten to check the rule itself instead of today's
+     answer (bulk answer, one code = one error, empty item in a bulk create). A fix on
+     the API side would now be noticed.
+   - A shared constant for the unknown ISBN (was written in 3 files).
+   Left on purpose
+   - "The partial-success tests lock in a design": partial success is a valid design;
+     a change to all-or-nothing is a contract change and SHOULD turn them red.
+
+Steps 7-8 - asynchronous jobs, multipart upload (10 findings)  ->  8f0ce0d
+   Fixed
+   - The webhook could report "running" when a timer fired 1 ms early. It now reports the
+     state at the job's end time.
+   - The polling test no longer needs to SEE every state (a slow machine can miss a
+     short one): states in order, each once, the last one "done".
+   - The local servers turn any error into a 500 answer and clear their timers on close.
+   Left on purpose
+   - The client's default JSON Content-Type stays: the "not valid JSON" tests need it.
+   - The 1-minute test runs on every CI push: the tag plan (smoke on pull requests, the
+     slow tests at night) is a Stage 5 task.
+
+
+3. Final review of the whole stage (23 October 2026)
+---------------------------------------------------
+
+Why one more review: each step review saw only its own steps. This one read the whole
+Stage 4 diff (322bc93..8f0ce0d) at once, looking for problems BETWEEN steps, and asked
+one more question: does anything need to change before Stage 5 starts?
+
+Two agents, working separately:
+   correctness   bugs, wrong reasons for test.fail, leaks, flaky spots, weak checks
+   readiness     what Stage 5 needs (tags, data tables, schema checks, CI suites,
+                 secrets, reports, failure triage) and whether the code is ready for it
+
+The findings marked "checked" were confirmed by reading the code before this file was
+written. tsc was clean.
+
+How each finding is written:
+   Where:     the file
+   Problem:   what is wrong
+   Example:   when it would hurt
+   Decision:  after the commit / in Stage 5 / not needed
+
+
+3.1 Correctness - F1 to F8 (no serious defect)
+
+F1. A test.fail test that a fix would not turn red  (checked)
+   Where:     tests/bookstore/accountBoundaries.spec.ts, the 85-character test
+   Problem:   "account created (201)" is checked as a setup step inside a test.fail test.
+   Example:   DemoQA fixes the bug by refusing the account (400). The setup check fails,
+              test.fail counts it as "expected", and the test stays green for ever.
+   Decision:  after the commit - check the rule in both correct directions: refused at
+              creation is fine, created must be able to log in.
+
+F2. A server outage in a setup step hides inside test.fail tests
+   Where:     the fixtures that prepare data (catalog, reader, pet) and a few setup
+              steps in the specs
+   Problem:   if a setup step gets 502, up to 17 test.fail tests count that as their
+              "expected" failure.
+   Example:   the 22 October outage (reports/2026-10-22-staging-demoqa-502.txt) at the
+              wrong moment: the run would show fewer failures than really happened.
+   Decision:  Stage 5 - part of the failure classification: a setup step that gets
+              5xx or no answer marks the test as skipped ("infrastructure"), visibly.
+
+F3. "The request failed" is also true for a 502
+   Where:     tests/petstore/bulkUsers.spec.ts
+   Problem:   the wrong-type test reads "refused" from ok = false, which a 502 also gives.
+   Example:   a gateway 502 makes the test pass without the server ever seeing the list.
+   Decision:  after the commit - expect a real error status (4xx or the known 500),
+              not "anything that is not ok".
+
+F4. Polling gives up one interval too early  (checked)
+   Where:     services/jobs/JobService.ts, waitUntilFinished
+   Problem:   it stops when "now + interval" passes the limit, and then reports the limit,
+              not the real time.
+   Example:   a job of 900 ms, interval 200 ms, limit 1000 ms: it gives up at 800 ms with
+              "still running after 1000 ms", although the job ends at 900 ms.
+   Decision:  after the commit - wait only up to the limit, poll once more at the limit,
+              report the real time.
+
+F5. A cleanup DELETE is never retried  (checked)
+   Where:     api/interceptors/retry.ts (only GET is retried)
+   Problem:   a 502 on the cleanup DELETE is not tried again. PetStore has no second
+              way, so the data stays. DemoQA tries once more with the password, but
+              milliseconds later, inside the same outage.
+   Example:   the 22 October outage: 3 DemoQA accounts left behind.
+   Note:      a retry helps only where http.retries is above 0 (staging), and only for
+              short outages - in the same outage the GET retries (3 tries, 500 ms apart)
+              failed too. It makes a leak less likely, it does not rule it out.
+   Decision:  after the commit - retry DELETE on 502/503/504. Deleting twice has the same
+              result as deleting once (DELETE is "idempotent"). Not on "no answer": the
+              first DELETE may have worked, and the second would get a confusing 404.
+              The same item as R4.
+
+F6. The 1-minute token test allows about 10 s, not 5 s
+   Where:     tests/dummyjson/tokenExpiry.spec.ts
+   Problem:   the time is taken when the refusing poll returns; with polls every 5 s and
+              5 s of tolerance, a token that dies at about 50 s would still pass.
+   Decision:  not needed now - the test proves "works, then expires near the minute";
+              can be made tighter in Stage 5 if the mentor asks.
+
+F7. A check that is always true  (checked)
+   Where:     tests/dummyjson/boundaries.spec.ts, "the minimum: 0 answers at once"
+   Problem:   it checks "the answer took at least 0 ms".
+   Example:   if DummyJSON waited 5 s for delay=0, the test would still pass.
+   Decision:  after the commit - an upper limit for delay 0 (for example under 2 s).
+
+F8. The job server accepts any job length
+   Where:     mocks/jobServer.ts
+   Problem:   Node runs a timer longer than about 24.8 days after 1 ms.
+   Example:   durationMs 3000000000: the webhook says "done" at once, polling says
+              "pending".
+   Decision:  after the commit - refuse such a length with 400.
+
+Checked and found clean
+   - The multipart change in ApiClient affects no other request (headers are copied
+     before the JSON Content-Type is removed).
+   - No unchecked casts: the few casts in the new code (the job server, one DemoQA
+     test) are followed by a check at run time.
+
+
+3.2 Ready for Stage 5? - R1 to R10
+
+Verdict: no structural refactoring is needed before Stage 5. The layers already have the
+places Stage 5 needs (one client, per-API services and checks, shared fixtures, tests
+that run in parallel). Most items below are Stage 5 work itself, not a refactoring.
+
+R1. Tags for test suites (smoke, regression, slow, ui)
+   Today:     2 of 140 tests have a tag (@ui, @slow).
+   Plan:      Stage 5, first step - tags in one constant file (a typo would silently
+              drop a test from a suite), on describe blocks, and one npm script per suite
+              so CI and local runs use the same definition.
+
+R2. Three tests with the same title  (checked)
+   Where:     tests/dummyjson/boundaries.spec.ts - "below the minimum: -1 is rejected"
+              under limit, skip and delay.
+   Problem:   a rerun by title (--grep) or an AI triage that matches by title would pick
+              all three.
+   Decision:  after the commit - put the parameter into the title.
+
+R3. Known deviations readable by tools
+   Today:     the reason of each test.fail is a code comment and assertion-notes.txt;
+              reports do not show it.
+   Plan:      Stage 5 - add the reason to the test as an annotation (it shows in every
+              report), so the failure triage can tell "known" from "new".
+   Note:      the missing assertion-notes.txt itself was written in this commit.
+
+R4. Retry DELETE
+   The same item as F5. After the commit.
+
+R5. Where schema validation goes
+   Plan:      Stage 5 - in the assertions layer, as an explicit check in the test
+              (for example "this answer is a Pet of the swagger").
+   Not:       in the client or an interceptor - a thrown error there would count as the
+              "expected failure" of a test.fail test and hide real changes.
+
+R6. Keep the content type of an answer
+   Plan:      Stage 5, only if error answers get schema checks: today an HTML page and a
+              JSON error look alike after the client has read them.
+
+R7. Secrets from the environment
+   Plan:      Stage 5 (a task of the stage) - passwords from GitHub Secrets and .env,
+              a clear error if one is missing, and an .env.example.
+
+R8. Reports and CI layout
+   Plan:      Stage 5 - the report set chosen by the run (HTML, Allure, JSON for the
+              triage agent), shard reports merged in one job, the sharding demo on one
+              environment only (two environments x shards would load demoqa.com).
+
+R9. One pattern for data tables
+   Decision:  not needed - the existing tables already follow one simple pattern. The
+              Stage 5 table should be pure data (inputs and expected values) with one
+              test body.
+
+R10. Similar code in the three APIs
+   Decision:  not needed - the three error checks differ on purpose, and the small
+              repeated pieces (service lists, cleanup hooks) do not grow with Stage 5.
+
+
+4. The plan
+-----------
+
+Decided on 23 October 2026: first the Stage 4 docs commit, then the fixes. The lists
+below are the proposal from this review.
+
+After the Stage 4 docs commit - one commit "Week 20. Middle Stage 4. Review fixes."
+   F1   the 85-character test checks the rule in both directions
+   F3   bulkUsers expects a real error status
+   F4   polling waits exactly up to its limit and reports the real time
+   F5   DELETE is retried on 502/503/504 (+ an interceptor test)
+   F7   delay 0 gets an upper time limit
+   F8   the job server refuses a job length a timer cannot hold
+   R2   unique titles in boundaries.spec.ts
+   Then: tsc, the changed specs 3 times, the full suite in dev and staging, a CI run.
+
+During Stage 5
+   R1 tags and suites, R3 known deviations as annotations, F2 setup failures shown as
+   "infrastructure", R5 schema checks, R6 if needed, R7 secrets, R8 reports and sharding.
+
+Not needed
+   F6, R9, R10 (reasons above).

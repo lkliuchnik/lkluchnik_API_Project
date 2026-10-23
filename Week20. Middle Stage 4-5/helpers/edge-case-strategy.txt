@@ -1,0 +1,321 @@
+Edge case strategy - how the Middle Stage 4 tests were chosen
+=============================================================
+
+What this file is for: it explains HOW we look for edge cases - which kinds of "unusual"
+input and situations we test, why these, and how we decide what a correct answer is.
+It is the thinking behind the Stage 4 tests. The list of what is broken in the APIs is
+in assertion-notes.txt; where each task is done is in test-plan.txt.
+
+
+In short
+--------
+
+- An edge case is an input or a situation at the border of what an endpoint is made for:
+  a missing field, a value just past a limit, a list with one bad item, a job that is not
+  finished yet. Most real bugs live there, because the happy path is what developers try.
+- We use seven techniques, one per Stage 4 task: negative categories, boundary values,
+  bulk partial failure, error consistency, asynchronous operations, multipart upload,
+  and stability.
+- For each one we first write down the RULE a correct API follows, then test the real
+  API against that rule. When the API breaks the rule, the test stays as it is and is
+  marked test.fail.
+- Where possible a test checks the rule, not today's answer. Then a fix in any correct
+  direction is noticed, and a wrong "fix" is not.
+- Every limit and every check was first tried live (curl or a short probe test), so the
+  tests are based on what the APIs really do, not on what their docs say.
+
+
+Contents
+--------
+
+   1. Where edge cases come from
+   2. Negative categories - one endpoint, five ways to be wrong
+   3. Boundary values - below, on and above each limit
+   4. Bulk requests - one bad item in a list
+   5. Error consistency - one error shape across endpoints
+   6. Asynchronous operations - polling and webhooks
+   7. Multipart upload - a form with a file
+   8. Stability - the same result every time
+   9. How a deviation is handled
+   10. What we did not test, and why
+   11. Checklist for a new edge case test
+
+
+1. Where edge cases come from
+-----------------------------
+
+We ask four questions about every endpoint:
+
+   What can be missing?       a required field, the token, the body, the file
+   What can be wrong?         the type, the format, a value out of range, an unknown id
+   What can be too much?      the largest value, a long name, many items, two files
+   What can happen in time?   the work is not done yet, the token runs out, the server
+                              is briefly down
+
+Then we keep the cases where a wrong answer would hurt a real client:
+- data is changed although the answer says "error" (or the other way round),
+- a client error is answered as a server crash (500) - monitoring raises a false alarm,
+- the error has another shape than usual - the client cannot read it,
+- an account or a token ends up in a state nobody can use or delete.
+
+Which API for which technique
+   DemoQA Book Store   negative categories, a length boundary, bulk add. It saves data
+                       and has real rules, so "nothing changed" can be checked.
+   DummyJSON           boundaries of query parameters and of the token lifetime. It has
+                       clear numeric limits and a real token expiry.
+   PetStore            error consistency (its swagger defines ONE error object), bulk
+                       create, multipart upload (the only API with a file upload).
+   Local job server    asynchronous jobs. None of the public APIs has background jobs,
+                       so this is a SIMULATION started by the tests (mocks/jobServer.ts).
+
+
+2. Negative categories - one endpoint, five ways to be wrong
+------------------------------------------------------------
+
+Where:   tests/bookstore/addBooksNegative.spec.ts (15 tests)
+Endpoint: POST /BookStore/v1/Books - add books to a reader's collection.
+
+Why one endpoint: the categories can be compared side by side. On one endpoint it is
+easy to see that DemoQA answers the same kind of mistake in four different ways.
+
+The five categories, and a correct answer for each
+   1. missing fields          400 with { code, message }
+   2. invalid format          400 (a wrong type or format is not a login problem)
+   3. unauthorized access     401
+   4. business rule broken    400 with DemoQA's rule code (1205 = not in the catalog)
+   5. duplicate data          a clear refusal (DemoQA uses 400 code 1210; 409 Conflict
+                              would be the usual code)
+
+What every negative test also checks
+   After a correct "no", the test reads the collection and checks it did not change
+   (every passing test that sends books - 7 of the 8).
+   A refusal that still changed data would be a hidden defect.
+
+What we found
+   Missing fields and a string instead of a list crash the server (500, HTML page).
+   A wrong userId format is answered as a login error (401). The duplicate rule works
+   only for a one-book request. Details: assertion-notes.txt, 13-19.
+
+
+3. Boundary values - below, on and above each limit
+---------------------------------------------------
+
+Where:   tests/dummyjson/boundaries.spec.ts (20 tests),
+         tests/bookstore/accountBoundaries.spec.ts (4 tests)
+
+The technique (boundary value analysis, BVA): for every limit we test the value just
+below it, the value on it, and the value just above it. Bugs hide in "<" written as
+"<=".
+
+   Parameter                     Below           On (accepted)          Above
+   limit (GET /products)         -1 rejected     0 (= all), 1, 2,       total + 1 = all
+                                                 total - 1, total       (capped, no error)
+   skip  (GET /products)         -1 rejected     0, total - 1           total, total + 1:
+                                                                        an empty page
+   delay (GET /test)             -1 rejected     0, 5000 ms             5001 rejected
+   expiresInMins (login)         0 rejected      1, 43200 minutes       43201 rejected
+   password (DemoQA)             7 rejected      8 accepted             -
+   user name + password          -               84 can log in          85 must log in
+   (DemoQA)                                                             too (it cannot)
+
+Rules we keep
+- Limits that come from data are READ from the API ("total" = the number of products),
+  never written into the test. If the data changes, the boundary moves with it.
+- "Accepted" is checked by its effect, not only by 200: limit 2 gives exactly 2
+  products; a 1-minute token has exactly 60 seconds between "issued" and "expires".
+- "Rejected" is checked with the API's own error message, where the API sends one.
+
+How the DemoQA length limit was found
+   The docs give no maximum. A binary search with real accounts showed: GenerateToken
+   fails when user name + password have 85 characters or more, from both sides (short
+   name + long password, long name + short password). At 84 the token is 255 characters
+   long. So the limit is a property of the token, not of the password field - and the
+   test is about the sum.
+
+
+4. Bulk requests - one bad item in a list
+-----------------------------------------
+
+Where:   tests/bookstore/bulkAdd.spec.ts (6 tests), tests/petstore/bulkUsers.spec.ts (2)
+
+A bulk endpoint gets a list. The edge case: ONE item in the list is bad.
+
+Two correct designs exist
+   all or nothing     the request fails and nothing is changed
+   partial success    the good items are done, and the answer says exactly which
+
+Both are fine. What is never fine: the answer says something different from what
+really happened. So the rule our tests use works for both designs:
+
+   The answer must match what really happened: an error and nothing changed, or a
+   success and the answer lists exactly what was done.
+
+How it is checked
+- Every item is checked on the server - the answer alone is not trusted (PetStore: a
+  GET per user; DemoQA: the collection is read back).
+- The position of the bad item is varied: first, in the middle, last. A server that
+  works through the list one by one may stop at the bad item.
+- Items that existed before the request must still be there.
+
+What the two APIs do
+   DemoQA (partial success): the good books are added wherever the bad one is - correct.
+   But the answer lists the bad ISBN as added, and a list of ONLY bad ISBNs gets 201.
+   PetStore (meant as all or nothing): a wrong field type -> 500 and nobody created -
+   correct. An empty item (null) -> 500, but the users before it ARE created.
+   Details: assertion-notes.txt, 11, 12, 28.
+
+
+5. Error consistency - one error shape across endpoints
+-------------------------------------------------------
+
+Where:   tests/dummyjson/errorConsistency.spec.ts (7),
+         tests/bookstore/errorConsistency.spec.ts (12),
+         tests/petstore/errorConsistency.spec.ts (10)
+
+A client reads errors with one piece of code. If one endpoint answers in another shape,
+that code breaks exactly when something already went wrong.
+
+How it is checked
+- One shared check per API, used on every endpoint (assertions/<api>/errorAssertions.ts):
+     DummyJSON   exactly { message }, plain text
+     DemoQA      exactly { code, message }
+     PetStore    exactly { code: number, type, message } - the swagger's error object
+- A table: one row = endpoint + what is wrong + the expected status. Different
+  resources and different reasons (unknown id, no token, bad body, wrong password).
+- "Exactly" means toEqual: no missing fields, no extra fields, no empty body.
+- Beyond the shape: the same error must have the same code (DemoQA 1200 and 1207 are
+  used for different errors; PetStore "not found" comes as 1/error and as 404/unknown).
+
+Why one check per API, not one for all three
+   The three APIs have different error objects by design. One check that accepts all
+   three shapes would accept almost anything.
+
+
+6. Asynchronous operations - polling and webhooks
+-------------------------------------------------
+
+Where:   tests/dummyjson/tokenExpiry.spec.ts (1, real server, tag @slow),
+         tests/jobs/jobPolling.spec.ts (5, local simulation)
+
+An asynchronous operation answers at once ("accepted") and finishes later. The client
+learns the result by asking again and again (polling) or by being called back
+(webhook).
+
+The real server: a token that runs out
+   Log in for 1 minute, check the token works, then poll GET /auth/me every 5 seconds
+   until it is refused. Checks: refused with "Token Expired!", close to the end of the
+   minute (5 s allowed for clock differences; about 10 s in practice, code-review.txt F6).
+   Limit: twice the lifetime, then the test fails with a clear message.
+
+The simulation: a job server started by the test
+   POST /jobs answers 202 "pending"; GET /jobs/{id} shows pending -> running -> done
+   (or failed); at the end the server POSTs the job to a callback address (webhook).
+   Each test starts its own server on a free port, so tests cannot see each other's
+   jobs. The test sets how long a job runs.
+
+Rules for every wait
+- Never a fixed sleep. Always an interval AND a limit.
+- At the limit: stop, and say how far it got ('job job-1 is still "pending" after
+  1000 ms (5 polls)').
+- Check the final state and the ORDER of states - never how many polls it took, and
+  never that a short state was seen (a slow machine can miss it).
+- An unknown job gets 404, not an endless "pending".
+- The webhook result must equal what polling shows.
+
+
+7. Multipart upload - a form with a file
+----------------------------------------
+
+Where:   tests/petstore/uploadImage.spec.ts (7 tests)
+Endpoint: POST /pet/{id}/uploadImage - a multipart/form-data form with the fields
+"file" (the image) and "additionalMetadata" (a description).
+
+The happy path first: a file with a description, and a file alone. The answer must name
+the file, its size and the description.
+
+The edge cases are mistakes in the FORM, not in the data
+   no file part                      -> 400 expected
+   the file under another name       -> 400 expected
+   JSON instead of a form            -> 415 Unsupported Media Type expected
+   a pet that does not exist         -> 404 expected
+   two files in the same field       -> refused, or one file described correctly
+
+What it needed in our client
+   The client sends JSON by default. A form needs its own Content-Type with a
+   "boundary" (the text that separates the parts), which Playwright writes itself. So
+   ApiClient got one option, multipart, and drops its JSON Content-Type for it. This
+   was the only change of the client core in Stage 4 - a new way to send, not a new API.
+   Without that line the upload gets 415 (checked).
+
+
+8. Stability - the same result every time
+-----------------------------------------
+
+Where:   reports/stability/2026-10-22-three-runs.txt (evidence)
+
+Edge case tests are easy to make flaky (a test that sometimes passes and sometimes fails):
+they touch limits, time and shared servers. What we do about it:
+
+- Own data: every test makes its own account, pet or user with a unique name or id.
+  No test depends on another one or on the order.
+- Cleanup always runs, also after a failure. DemoQA accounts that cannot get a token are
+  deleted with the password. A leftover is written into the report as "leaked data".
+- PetStore ids are always set by our factory. Ids made by the server are larger than
+  JavaScript can store exactly, so a later GET would hit another pet.
+- No numbers the data can change (limits are read from the API).
+- No fixed waiting (see part 6).
+- Retries only where the network is the problem: a GET that got 502/503/504 or no answer,
+  in staging. Never a 4xx, never a POST - a retry must not hide a bug.
+
+Result: 3 full runs in a row with retries switched off - 140 of 140 as expected, 0 flaky,
+the 33 known deviations failed for the same reason every time.
+
+What can still break a run: the public servers. On 22 October DemoQA answered "502 Bad
+Gateway" for a few seconds (reports/2026-10-22-staging-demoqa-502.txt). Our analysis of the
+report showed an infrastructure failure, not a test bug.
+
+
+9. How a deviation is handled
+-----------------------------
+
+1. Try it live first. Write down what the API really answers.
+2. Write the test for the CORRECT answer, as the task says.
+3. If the API answers differently: declare the test as test.fail('title', ...), with a
+   short "known deviation: ..." comment above it. Never test.fail() inside the body.
+4. Check that it fails for THAT reason (the JSON report shows the failed check).
+5. Describe it in assertion-notes.txt with a number.
+6. Where possible, write the check as a rule that also accepts the other correct design
+   (bulk answers, error codes). Then a fix is noticed whichever way it goes.
+
+We do not switch to another API to get a green test, and we do not write a test that
+expects the bug ("500 is fine").
+
+
+10. What we did not test, and why
+---------------------------------
+
+- A real asynchronous API: none of our public APIs has background jobs. The job server
+  is a simulation and is called one in the code and the docs.
+- 409 Conflict for duplicates: no API here has it. DemoQA's 400 code 1210 is used.
+- Rate limits (429): no API here has documented limits; a test would load public servers.
+- Very large uploads: 2 MB worked when tried by hand. Larger files would load a public
+  server for no new knowledge.
+- Concurrency (two clients change the same data at the same moment): not part of the
+  Stage 4 tasks, and on shared public servers the result would not be repeatable.
+- Things seen by hand but not worth a test: assertion-notes.txt, part 5.
+
+
+11. Checklist for a new edge case test
+--------------------------------------
+
+[ ] Which of the four questions does it answer (missing / wrong / too much / time)?
+[ ] What would a real client lose if the API got it wrong?
+[ ] Tried live first - the real answer is written down.
+[ ] The expected answer is the correct one, not today's one.
+[ ] "Nothing changed" or "exactly this changed" is checked on the server, not only in
+    the answer.
+[ ] Limits from data are read from the API.
+[ ] Own data, unique names, registered for cleanup before the first change.
+[ ] Any waiting has an interval and a limit.
+[ ] If the API is wrong: test.fail on the declaration + a comment + assertion-notes.txt.
+[ ] Run 3 times (--repeat-each=3) before the commit.

@@ -1,0 +1,375 @@
+Test plan - Week 20
+===================
+
+Start here. This file says what Middle Stage 4 asked for, where each task is done, and
+where the evidence is. How the code works and how to extend it: README.txt.
+
+The folder is for Middle Stage 4 (negative tests, edge cases, stability) and Middle Stage
+5 (data-driven suites, schema checks, CI suites). Stage 4 is done; Stage 5 has not
+started yet.
+
+   DummyJSON          https://dummyjson.com             since week 18
+   DemoQA Book Store  https://demoqa.com                since week 19
+   PetStore           https://petstore.swagger.io/v2    new in Stage 4
+   Local job server   started by the tests              new in Stage 4 (a simulation)
+
+
+In short
+--------
+
+   Middle Stage 4   done      140 tests (52 at the baseline, net +88)
+                              CI green in dev, staging and ui-test
+   Middle Stage 5   not started
+
+What Stage 4 added
+   Negative tests in five categories, boundary values, bulk requests with one bad item,
+   error consistency (29 checks on three APIs), asynchronous jobs (polling and webhook),
+   a multipart file upload, and proof of stability (three clean runs in a row).
+   PetStore was added as the third API without changing the client.
+
+What it found
+   25 new places where an API does not do what it should. With the 8 older ones, 33
+   tests are marked test.fail - "expected to fail" - and each one is explained in
+   assertion-notes.txt. Two examples: DemoQA creates an account that can never log in;
+   PetStore answers "error" for a bulk create that still created half of the users.
+
+Numbers
+   140 tests: 107 pass, 33 fail as expected.
+   By API: DummyJSON 68, DemoQA 46, PetStore 21, local job server 5.
+   Three runs in a row with retries off: 140 of 140 as expected each time, 0 flaky.
+
+
+The files in helpers/
+---------------------
+
+test-plan.txt
+   This file.
+
+README.txt
+   How the architecture works, and how to add a test, an endpoint, a service, an
+   environment or a whole new API. Written for a new team member.
+
+edge-case-strategy.txt
+   How the Stage 4 edge cases were chosen: the seven techniques, the rule behind each
+   one, what was not tested and why, a checklist for a new edge case test.
+
+assertion-notes.txt
+   What the tests check, and the 33 known deviations (8 DummyJSON, 15 DemoQA,
+   10 PetStore), each with the test, the correct rule and the real answer.
+
+code-review.txt
+   Every code review of Stage 4: what was found, fixed or left, and the plan from the
+   final review (small fixes after this commit, the rest in Stage 5).
+
+reports/stability/
+   The three clean runs: 2026-10-22-three-runs.txt (the story) and the three Playwright
+   JSON reports (passwords and tokens replaced with [REDACTED-...]).
+
+reports/2026-10-22-staging-demoqa-502.txt (+ .json)
+   One red run, explained: DemoQA answered "502 Bad Gateway" for a few seconds. Why it
+   was the server, not the tests.
+
+screenshots/
+   ci-green-run-5-async-multipart.png - the last green CI run of Stage 4.
+
+Reading order
+   5 minutes    this file: "In short" and "Evidence checklist"
+   15 minutes   + edge-case-strategy.txt, "In short" and parts 2-7
+                + assertion-notes.txt, the deviations of one API
+   to extend    README.txt, parts 5-10
+
+
+Words used in these files
+-------------------------
+
+client (ApiClient)
+   The one class that sends HTTP requests. Every answer comes back in the same shape:
+   status, ok, body, durationMs, attempts.
+
+interceptor
+   A small function every request passes through: auth (adds the token), retry (tries
+   again when the server is briefly down), logging (writes each request to the report).
+
+service
+   A class for one resource, with one method per endpoint - for example
+   petstore.pets.get(7) sends GET /pet/7.
+
+fixture
+   Something Playwright prepares before a test and cleans up after it - for example
+   "pet", a new pet that exists on the server during the test.
+
+environment
+   A named set of settings (test user, retries, timeout). Chosen with TEST_ENV=dev or
+   TEST_ENV=staging; the code stays the same.
+
+edge case
+   An input or situation at the border of what an endpoint is made for: a missing field,
+   a value just past a limit, a list with one bad item, a job that is not finished.
+
+negative test
+   A test that sends something wrong on purpose and checks the API refuses it correctly.
+
+boundary value analysis (BVA)
+   Testing the value just below a limit, on it, and just above it.
+
+bulk request
+   One request with a list of items (several books, several users).
+
+partial failure
+   A bulk request where some items work and some do not.
+
+error consistency
+   Every endpoint of an API answers errors in the same shape, so a client can read them
+   with one piece of code.
+
+asynchronous operation
+   The server answers at once ("accepted", 202) and does the work later.
+
+polling
+   Asking again and again, with a pause, until the work is done - always with a limit.
+
+webhook
+   The opposite of polling: the server calls the client back when the work is done.
+
+multipart (multipart/form-data)
+   A request body made of parts - fields and files - like a web form with a file.
+
+mock, simulation
+   A small server of our own that plays a real API. Here: the job server in mocks/.
+
+idempotent
+   Doing it twice has the same result as doing it once (DELETE is; POST is not).
+
+flaky test
+   A test that sometimes passes and sometimes fails without any change in the code.
+
+seeded data
+   Test data that is ready before the test starts: a new account, a new pet.
+
+leaked data
+   An account, pet or user that the cleanup could not delete. Shown in the report.
+
+test.fail
+   A Playwright mark: "this test is expected to fail", because the API does not do what
+   it should. If it ever passes, the run turns red.
+
+known deviation
+   A place where an API does not do what it should, kept visible with test.fail.
+
+precondition
+   A step that only prepares a test. Its check says "precondition:".
+
+infrastructure failure
+   A failure caused by a server or the network (for example 502 Bad Gateway), not by the
+   test and not by the settings of the run.
+
+@ui, @slow
+   Tags in a test's options. @ui needs a browser; @slow waits a long time (1 minute).
+
+Basic auth
+   A login sent as "user name:password" in a header. DemoQA accepts it for deleting an
+   account, which the cleanup uses when no token can be got.
+
+
+How the work is split into commits
+----------------------------------
+
+1. "Week 20. Middle Stage 4-5. Baseline (copy of week 19)"   (322bc93)
+   The week 19 code, copied. Nothing new - the "before" state.
+
+2. "Week 20. Middle Stage 4. PetStore as the third API."   (88a0856)
+   PetStore services, models, factory, fixture with cleanup, 2 tests. No change in the
+   client or the interceptors.
+
+3. "Week 20. Middle Stage 4. Negative tests and boundaries."   (b185454)
+   Negative categories (DemoQA), boundaries (DummyJSON, DemoQA), the cleanup with Basic
+   auth.
+
+4. "Week 20. Middle Stage 4. Bulk partial failures and error consistency."   (fe2a6f4)
+   Bulk tests (DemoQA, PetStore), error consistency (all three APIs), the report of the
+   502 outage.
+
+5. "Week 20. Middle Stage 4. Async polling and multipart upload."   (8f0ce0d)
+   The 1-minute token test, the local job server with polling and webhook, the
+   multipart upload and the one client change it needed.
+
+6. "Week 20. Middle Stage 4. Stability evidence and docs."   (this commit)
+   The three-run reports, the CI screenshot and the documents in helpers/.
+
+
+Middle Stage 4 - the practice tasks
+===================================
+
+Each task below names where it is done, what the tests check, and what was found. The
+thinking behind all of them: edge-case-strategy.txt.
+
+
+Task 1. Negative tests in several categories
+--------------------------------------------
+
+Where:    tests/bookstore/addBooksNegative.spec.ts - 15 tests on one endpoint,
+          POST /BookStore/v1/Books
+Covers:   1 missing fields, 2 invalid format, 3 unauthorized access, 4 business rule
+          violations, 5 duplicate data
+Checks:   the status, the error body { code, message }, and (in the 7 passing tests
+          that send books) that the collection did not change
+Found:    7 deviations (assertion-notes.txt, 13-19): three server crashes (500), a format
+          error answered as a login error, an HTML error page, and two rules that work
+          only for a one-book request
+
+
+Task 2. Boundary values
+-----------------------
+
+Where:    tests/dummyjson/boundaries.spec.ts (20),
+          tests/bookstore/accountBoundaries.spec.ts (4)
+Covers:   DummyJSON limit, skip, delay and the token lifetime (expiresInMins);
+          DemoQA password length and user name + password length
+How:      below / on / above each limit; limits from data are read from the API
+Found:    a token "for 0 minutes" lives 30 days; a too-long lifetime gets 500, not 400;
+          DemoQA creates accounts of 85+ characters that can never log in
+          (assertion-notes.txt, 6, 7, 20)
+
+
+Task 3. Bulk operations with partial failures
+---------------------------------------------
+
+Where:    tests/bookstore/bulkAdd.spec.ts (6), tests/petstore/bulkUsers.spec.ts (2)
+Rule:     the answer must match what really happened - an error and nothing changed, or
+          success and the answer lists exactly what was done. Every item is checked on
+          the server.
+Covers:   the bad item first, in the middle, last; items that existed before; a list of
+          bad items only; a wrong field type; an empty item
+Found:    DemoQA's answer lists books it did not add; PetStore answers "error" after
+          creating half of the users (assertion-notes.txt, 11, 12, 28)
+
+
+Task 4. Error consistency across endpoints
+------------------------------------------
+
+Where:    tests/dummyjson/errorConsistency.spec.ts (7),
+          tests/bookstore/errorConsistency.spec.ts (12),
+          tests/petstore/errorConsistency.spec.ts (10)
+How:      one shared error check per API (assertions/<api>/errorAssertions.ts), used on
+          every endpoint in a table; plus "the same error has the same code"
+Covers:   29 checks: 7 DummyJSON, 12 DemoQA, 10 PetStore - accounts, books, products,
+          users, posts, pets, orders, login
+Found:    an HTML page, empty bodies, 200 for a failed login, one code for several errors,
+          two codes for "not found" (assertion-notes.txt, 8, 21-27)
+
+
+Task 5. Asynchronous operations: polling and webhooks
+-----------------------------------------------------
+
+Where:    tests/dummyjson/tokenExpiry.spec.ts (1, real server, @slow),
+          tests/jobs/jobPolling.spec.ts (5, local simulation)
+Real:     a 1-minute token works, then is refused with "Token Expired!" - found by
+          polling every 5 s with a limit of 2 minutes
+Simulated: a job is accepted (202), polled until done or failed, with a limit; an
+          unknown job is 404; the webhook brings the same result as polling
+Why a simulation: none of the public APIs here has background jobs. The job server is
+          called a simulation in the code and in these documents.
+
+
+Task 6. Multipart file upload
+-----------------------------
+
+Where:    tests/petstore/uploadImage.spec.ts (7)
+Covers:   a file with a description, a file alone; then a form without the file, with
+          the wrong field name, JSON instead of a form, an unknown pet, two files
+Client:   ApiClient got the multipart option (README.txt, part 3) - the only change of
+          the client core in Stage 4
+Found:    5 deviations: 500 for a broken form (no file part, wrong field name), an
+          error without a message, an upload to a pet that does not exist, two files
+          mixed up (assertion-notes.txt, 29-33)
+
+
+Task 7. Stable across 3 consecutive runs
+----------------------------------------
+
+Where:    reports/stability/2026-10-22-three-runs.txt and the three JSON reports
+How:      the full suite (API, UI and the 1-minute test), 3 times in a row, retries off,
+          4 workers in parallel
+Result:   140 of 140 as expected in each run, 0 flaky, no leaked data; the 33 test.fail
+          tests failed at the same check with the same values every time
+Also:     reports/2026-10-22-staging-demoqa-502.txt - one red run caused by the DemoQA
+          server, how it was told apart from a test problem
+
+
+Task 8. An edge case strategy
+-----------------------------
+
+Where:    edge-case-strategy.txt
+
+
+What changed compared to the week 19 code
+-----------------------------------------
+
+- PetStore as a third API: services, models, factory, fixture with cleanup, error check.
+- A local job server (mocks/), its service and fixture.
+- ApiClient: one new option, multipart. Nothing else in the client or the interceptors.
+- The DemoQA cleanup: deletes with the password when no token can be got; the note in
+  the report is now "leaked data" for every API.
+- New service methods: AuthService.login with a token lifetime, BookStoreService
+  addBooksRaw and getBook, AccountService.deleteWithPassword.
+- Two DemoQA rules moved from businessRules.spec.ts to addBooksNegative.spec.ts (same
+  titles). Week 19's "all or nothing" test (gap S8) moved from collection.spec.ts to
+  bulkAdd.spec.ts and was widened to accept partial success.
+
+
+Evidence checklist - Middle Stage 4
+-----------------------------------
+
+[x] Negative tests, 5 categories            tests/bookstore/addBooksNegative.spec.ts
+[x] Boundary value tests                    tests/dummyjson/boundaries.spec.ts,
+                                            tests/bookstore/accountBoundaries.spec.ts
+[x] Bulk partial failures                   tests/bookstore/bulkAdd.spec.ts,
+                                            tests/petstore/bulkUsers.spec.ts
+[x] Error consistency, 3+ endpoints         tests/*/errorConsistency.spec.ts
+[x] Async polling / webhook                 tests/dummyjson/tokenExpiry.spec.ts,
+                                            tests/jobs/jobPolling.spec.ts
+[x] Multipart upload                        tests/petstore/uploadImage.spec.ts
+[x] 3 consecutive stable runs               reports/stability/
+[x] Edge case strategy                      edge-case-strategy.txt
+[x] Known deviations documented             assertion-notes.txt (33)
+[x] Code review                             code-review.txt
+[x] All tests pass locally                  dev 140 (with the UI test),
+                                            staging 139 (API tests; the UI test
+                                            runs only in dev)
+[x] Green CI run                            screenshots/ci-green-run-5-async-multipart.png
+
+
+Evidence: green CI runs of Middle Stage 4
+-----------------------------------------
+
+Workflow: API tests — Week 20 (Middle Stage 4-5), .github/workflows/week20-middle4-5.yml
+Every run has three jobs: test (dev), test (staging), ui-test (dev).
+
+Run #1 - commit 322bc93, the baseline (51 API tests + 1 UI test)
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/39413398393
+
+Run #2 - commit 88a0856, PetStore (53 API tests + 1 UI test)
+   green; PetStore read-after-write also stable from the GitHub runner
+
+Run #3 - commit b185454, negative tests and boundaries (90 API tests + 1 UI test)
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/39448954523
+   test (dev) 161 s, test (staging) 187 s, ui-test 57 s; flaky 0 in both reports
+
+Run #4 - commit fe2a6f4, bulk and error consistency (126 API tests + 1 UI test)
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/39764475915
+   test (dev) 254 s, test (staging) 239 s, ui-test 364 s (most of it installing the
+   browser on the runner)
+
+Run #5 - commit 8f0ce0d, async and multipart (139 API tests + 1 UI test)
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/39779704250
+   test (dev) 309 s, test (staging) 297 s (the 1-minute token test), ui-test 101 s
+   Screenshot: screenshots/ci-green-run-5-async-multipart.png
+
+
+Middle Stage 5 - not started
+============================
+
+What Stage 5 will build on: the tags (@ui, @slow), the data tables of Stage 4, the
+PetStore services (for the swagger schema checks) and the stability numbers above.
+What the final Stage 4 review says must be ready first, and what belongs to Stage 5
+itself: code-review.txt, part 3.2 and part 4.
