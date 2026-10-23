@@ -411,7 +411,7 @@ How the work is split into commits
 6. "Week 20. Middle Stage 4. Stability evidence and docs."   (8b6eea6)
    The three-run reports of 22 October, the CI screenshot and the documents in helpers/.
 
-7. "Week 20. Middle Stage 4. Review fixes, date boundaries, idempotency."   (this commit)
+7. "Week 20. Middle Stage 4. Review fixes."   (3713c3d)
    The 7 fixes from the final review (code-review.txt, part 4), and what the check
    against the task text showed was missing: date boundaries (PetStore shipDate),
    idempotency tests, this file following the task text, three new clean runs.
@@ -461,7 +461,12 @@ Run #5 - commit 8f0ce0d, async and multipart (139 API tests + 1 UI test)
    test (dev) 309 s, test (staging) 297 s (the 1-minute token test), ui-test 101 s
    Screenshot: screenshots/ci-green-run-5-async-multipart.png
 
-The run of commit 7 (153 API tests + 1 UI test) is added after the push.
+Run #7 - commit 3713c3d, review fixes, date boundaries, idempotency (153 API tests + 1 UI
+test) - the final Stage 4 code
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/39941298984
+   test (dev), test (staging), ui-test (dev) - all green; 7 min 44 s in total, ui-test
+   1 min 51 s; 3 artifacts (the HTML reports)
+   Screenshot: screenshots/ci-green-run-7-review-fixes.png
 
 
 Middle Stage 5 - not started

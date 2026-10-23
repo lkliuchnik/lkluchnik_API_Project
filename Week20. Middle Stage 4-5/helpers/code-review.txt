@@ -268,8 +268,7 @@ R10. Similar code in the three APIs
 
 Decided on 23 October 2026: first the Stage 4 docs commit (8b6eea6), then the fixes.
 
-Done - commit "Week 20. Middle Stage 4. Review fixes, date boundaries, idempotency."
-(23 October 2026)
+Done - commit "Week 20. Middle Stage 4. Review fixes."   (3713c3d, 23 October 2026)
    F1   accountBoundaries.spec.ts: the 85-character test accepts both correct designs -
         refused at creation (400), or created and able to log in. New title:
         "above the maximum: 85 characters are refused, or the account can log in".
