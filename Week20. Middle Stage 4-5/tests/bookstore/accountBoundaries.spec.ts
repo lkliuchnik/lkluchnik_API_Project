@@ -26,7 +26,9 @@ test.describe('Boundaries: password length', { tag: Tag.REGRESSION }, () => {
     await expectBookStoreError(response, { status: HttpStatus.BAD_REQUEST, code: '1300' });
   });
 
-  test('the minimum: 8 characters are accepted', async ({ bookstore, accountCleanup }) => {
+  // also the DemoQA smoke test: opening and closing one account is the shortest happy path
+  // of DemoQA (3 requests) - a smoke test must stay fast even when DemoQA is slow
+  test('the minimum: 8 characters are accepted', { tag: Tag.SMOKE }, async ({ bookstore, accountCleanup }) => {
     const credentials = buildCredentials({ password: passwordOfLength(8) });
 
     const { status, body } = await bookstore.account.create(credentials);

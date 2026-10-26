@@ -1,9 +1,9 @@
 // Test tags: which suite a test belongs to. One place for the names - a typo in a tag would
 // silently drop a test from a suite, so specs use these constants, never the plain text.
 //
-//   smoke        one or two happy paths per API: "is everything up and wired?" Fast where
-//                the API allows it - DemoQA has no happy path without opening an account,
-//                so its smoke test takes 5-25 s. Runs on every pull request.
+//   smoke        one or two happy paths per API: "is everything up and wired?" Each one makes
+//                as few requests as possible, so smoke stays fast also when a public server
+//                is slow (DemoQA: open and close one account). Runs on every pull request.
 //   regression   every test except the slow ones. Runs on every push to main.
 //   slow         waits a long time (a real 1-minute token). Only in the full suite.
 //   ui           needs a browser. Runs in its own CI job.

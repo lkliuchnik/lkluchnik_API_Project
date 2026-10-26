@@ -93,8 +93,12 @@ S1-6. The smoke suite broke its own rule
    Decision:  fixed. Smoke now has 6 tests: DummyJSON 2 (the environment's user logs in;
               a protected endpoint with a valid token), DemoQA 1 (the reader journey),
               PetStore 2 (a pet's life; an upload), job server 1 (202, then done).
-              About 6 seconds without DemoQA delays. The rule now says that DemoQA has no
-              happy path without opening an account, so its smoke test is the slow one.
+              About 6 seconds without DemoQA delays.
+   Later:     the first CI run on the pull request showed that the reader journey (~12
+              DemoQA requests) does not fit into 60 s when DemoQA is slow. The DemoQA smoke
+              test is now "the minimum: 8 characters are accepted" (3 requests), and the
+              rule says "as few requests as possible"
+              (reports/2026-10-26-ci-smoke-demoqa-slow.txt).
 
 S1-7. CI runs could cancel each other
    Found:     the concurrency group was "event + branch" with cancel-in-progress for all.
