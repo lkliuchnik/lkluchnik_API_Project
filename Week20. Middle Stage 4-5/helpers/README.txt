@@ -468,7 +468,9 @@ How a CI run is built - think of it as four groups of jobs, one after another:
    test       the API tests themselves - one job per environment. For regression and
               the night run, the dev tests are split in two halves ("shards") that run
               on two machines at the same time, so the run finishes sooner.
-   ui-test    the browser test, at the same time as the API tests (not for smoke).
+   ui-test    the browser test, at the same time as the API tests (not for smoke). It
+              runs inside Playwright's ready-made Docker image, so no time goes into
+              installing a browser (ci-improvements.txt, part 2).
    report     one per environment, after all tests are done - also when some failed.
               It glues the halves together and produces what you download from the run:
                  playwright-report-...   the HTML report (open index.html)

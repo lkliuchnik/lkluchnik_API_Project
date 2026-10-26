@@ -1,0 +1,103 @@
+How we make the CI run better
+=============================
+
+This file collects what we noticed while running the tests in CI, and what we did about
+it - or why we decided not to change something. It answers the Stage 5 task "suggest
+improvements to test organization in CI". Each idea comes from a real run, with numbers.
+
+
+The short version
+-----------------
+
+   1. A lighter quick check for DemoQA            done
+   2. The browser test in a ready-made image      done
+   3. Uneven halves when the tests are split      noticed, not changed (yet)
+
+
+1. A lighter quick check for DemoQA
+-----------------------------------
+
+What we saw: on the first pull request the quick checks ("smoke") were red. One of them,
+the full DemoQA reader story, needs about 12 requests in a row. DemoQA was slow that
+morning, and the test ran out of its 60 seconds.
+
+What we did: the quick check for DemoQA now only opens an account (the clean-up closes
+it) - 3 requests. The long story stays in the full regression run.
+
+Result: the quick checks take about 25 seconds per environment and no longer depend on
+how fast DemoQA is that day.
+
+More: reports/2026-10-26-ci-smoke-demoqa-slow.txt
+
+
+2. The browser test in a ready-made image
+-----------------------------------------
+
+What we saw: in the first regression run the browser test job took 11 minutes 46 seconds.
+The test itself takes a few seconds. 11 minutes 22 seconds went into one step - installing
+the browser and the system packages it needs, on a fresh GitHub machine, every time.
+
+   run #13, before:   ui-test 11 min 46 s, of it "install the browser" 11 min 22 s
+
+What we did: the job now runs inside Playwright's own Docker image
+(mcr.microsoft.com/playwright:v1.63.0-noble), where the browser is already installed.
+The installing step is gone. This is the way Playwright itself recommends for CI.
+
+One thing to get right: the version of the image has to be the same as the version of
+Playwright in the project - otherwise the browser in the image does not fit. We do not
+write the version into the workflow by hand. The "checks" job reads which Playwright
+version the project uses, and the browser job takes the image of exactly that version. So
+when Playwright is updated one day, the image follows by itself.
+
+The browser job also skips installing Node.js - the image already has it.
+
+Nothing else changed: the API test jobs never needed a browser, and the tests, the
+reports and the numbers are the same.
+
+   after:   (filled in after the next regression run)
+
+
+3. Uneven halves when the tests are split
+-----------------------------------------
+
+What we saw: for regression, the dev tests are split into two halves that run on two
+machines at the same time. But the halves were very different:
+
+   run #13:   dev half 1 - 249 seconds of tests
+              dev half 2 -  36 seconds (the whole job)
+
+Why: Playwright splits the tests by count, in the order of the file names. The DemoQA
+files come first in the alphabet - so all 45 slow DemoQA tests landed in the first half,
+and the fast DummyJSON, PetStore and job server tests in the second. Each half has the
+same number of tests, but not the same amount of waiting.
+
+What it means: the split still helps a little (the second half is off the first one's
+plate), but the run is only as fast as its slowest half.
+
+What we could do:
+- Split DemoQA itself over both machines. That would roughly halve the time - but then
+  twice as many tests talk to DemoQA at the same moment (a GitHub machine runs 2 tests at
+  once, so 4 instead of 2). DemoQA is a free public site that was slow on two days this
+  week; more load could make it slower and the tests flaky.
+- Split by API instead of by count: one job for DemoQA, one for everything else. The jobs
+  would still be uneven (DemoQA is simply the slowest site), but it would be clear which
+  job waits for which website - useful when a run is red.
+- Use more machines, for example 4 instead of 2. Each machine gets a quarter of the
+  tests, so the DemoQA tests would spread over the first two machines and the slowest
+  part would get shorter. But that is again more DemoQA tests at the same moment - the
+  same downside as the first idea, plus more machines to pay for in minutes.
+
+Decision for now: no change. The run takes about 4.5 minutes, the time goes to one slow
+public website, and protecting that website from extra load matters more than one or two
+minutes. If the suite grows, splitting by API is the first thing to try.
+
+
+Other small things we noticed
+-----------------------------
+
+- GitHub warns that the actions we use (checkout, setup-node, upload-artifact at v4) run on
+  an older Node.js version and are being moved to a newer one. Nothing breaks today; when
+  newer versions of these actions are out for a while, we update them in one go.
+- The "time" in the run summary is from the first test to the last one, over all parts.
+  In run #13 the dev time (11 min 31 s) included the browser test waiting for its install.
+  With the ready-made image this number should become close to the slowest half.

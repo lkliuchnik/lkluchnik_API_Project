@@ -7,5 +7,5 @@ playwright/.cache/
 allure-results/
 allure-report/
 allure-history/
-reports/
+/reports/
 all-blob-reports/

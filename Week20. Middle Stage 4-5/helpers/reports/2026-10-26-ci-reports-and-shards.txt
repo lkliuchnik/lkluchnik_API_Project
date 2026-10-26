@@ -1,0 +1,97 @@
+The new CI run on GitHub: two real runs
+=======================================
+
+This file shows how a CI run looks after Stage 5 step 2 - the order of the jobs, the
+split into halves, the reports you can download, and the numbers on the Summary page. It
+is the evidence for the Stage 5 tasks "configure test reporting as a CI artifact" and
+"modify or extend pipeline steps", with two real runs from 26 October 2026.
+
+
+The short version
+-----------------
+
+   run #12   quick checks (smoke) on the pull request      green, 53 seconds
+   run #13   full regression, started by hand               green, 12 min 26 s
+
+Both runs went through the same chain of jobs:
+
+   checks  ->  test  ->  report
+           ->  ui-test ->
+
+Every run leaves its reports as files to download ("artifacts"), and writes a table of
+numbers on its Summary page.
+
+
+Run #12 - quick checks on the pull request
+------------------------------------------
+
+Link: https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40308438378
+Screenshots: ../screenshots/ci-pr-smoke-run-12.png (the jobs)
+             ../screenshots/ci-pr-smoke-run-12-summary.png (the numbers)
+
+What happened:
+- "checks" (10 seconds) found the code fine and planned the run: the event was a pull
+  request, so the suite is smoke, one job per environment.
+- Two test jobs: dev and staging, 6 quick tests each.
+- The browser test was skipped - a pull request gets quick API feedback only.
+- Two report jobs glued the results together and wrote the numbers:
+
+   smoke - dev        6 tests, 6 passed, pass rate 100%, 7 seconds
+   smoke - staging    6 tests, 6 passed, pass rate 100%, 7 seconds
+
+
+Run #13 - full regression, started by hand
+------------------------------------------
+
+Link: https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40309198930
+Screenshots: ../screenshots/ci-regression-run-13.png (the jobs)
+             ../screenshots/ci-regression-run-13-summary.png (the numbers)
+             ../screenshots/ci-regression-run-13-artifacts-1.png and -2.png (the files)
+
+We started it from the Actions page ("Run workflow", suite "regression") on our branch,
+to see the split into halves before the merge.
+
+What happened:
+- "checks" planned 3 test jobs: the dev tests in two halves (shards) running at the same
+  time, and staging in one job. Plus the browser test.
+- All jobs green. The report jobs glued the dev halves and the browser test into one dev
+  report:
+
+   regression - dev        153 tests: 117 passed, 36 known deviations, 0 failed,
+                           0 flaky, pass rate 100%
+   regression - staging    152 tests: 116 passed, 36 known deviations, 0 failed,
+                           0 flaky, pass rate 100%
+
+  (Dev has one test more - the browser test runs only in dev. The 36 "known deviations"
+  are the tests marked test.fail, failing as expected - assertion-notes.txt.)
+
+How long the parts took:
+
+   checks                 11 s
+   test (dev 1/2)        264 s
+   test (dev 2/2)         36 s
+   test (staging 1/1)    268 s
+   ui-test (dev)         706 s   - 682 s of it installing the browser
+   report (dev)           18 s
+   report (staging)       20 s
+
+Two things in these numbers were worth improving - the slow browser install and the
+uneven halves. Both are in ci-improvements.txt.
+
+
+The files every run leaves (artifacts)
+--------------------------------------
+
+At the bottom of a run's Summary page. Run #13 left 14 files:
+
+   kept 14 days - the final reports, one set per environment:
+      playwright-report-week20-regression-dev / -staging    the HTML report
+      allure-report-week20-regression-dev / -staging        the Allure report
+      results-json-week20-regression-dev / -staging         all results as data
+
+   kept 3 days - the raw parts the reports were glued from:
+      blob-report-dev-1, -dev-2, -dev-ui, -staging-1
+      allure-results-dev-1, -dev-2, -dev-ui, -staging-1
+
+The raw parts are kept only briefly: once the report job has used them, they are just a
+backup in case the reports have to be built again.

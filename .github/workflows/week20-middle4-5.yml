@@ -61,6 +61,7 @@ jobs:
     outputs:
       suite: ${{ steps.plan.outputs.suite }}
       matrix: ${{ steps.plan.outputs.matrix }}
+      playwright: ${{ steps.plan.outputs.playwright }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -93,6 +94,9 @@ jobs:
           fi
           echo "suite=$SUITE" >> "$GITHUB_OUTPUT"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          # the Playwright version that runs the tests (playwright-core) - the ui-test job takes
+          # the Docker image of exactly this version, so the browser in it always fits
+          echo "playwright=$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
           echo "## Suite: $SUITE (event ${{ github.event_name }})" >> "$GITHUB_STEP_SUMMARY"
 
   test:
@@ -136,21 +140,23 @@ jobs:
   # The API + UI test needs a browser and depends on the demoqa.com web page, which is slower
   # and less stable than the APIs. A separate job keeps a UI problem from hiding API results.
   # Not for smoke: a pull request gets quick API feedback only.
+  # It runs inside Playwright's own Docker image, where the browser and everything it needs is
+  # already installed - installing them on a plain runner took 11 of the job's 12 minutes.
+  # The image version is the Playwright version of the project, read by "checks", so it
+  # follows every Playwright update by itself.
   ui-test:
     name: ui-test (dev)
     needs: checks
     if: needs.checks.outputs.suite != 'smoke'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.checks.outputs.playwright }}-noble
+      options: --user 1001 # the runner's user, so the job may write into the checked-out folder
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: "Week20. Middle Stage 4-5/package-lock.json"
+      # no setup-node here: the image already has Node and the browser
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
       - run: npx playwright test --grep @ui
         env:
           TEST_ENV: dev # no secrets: the UI test uses DemoQA only
