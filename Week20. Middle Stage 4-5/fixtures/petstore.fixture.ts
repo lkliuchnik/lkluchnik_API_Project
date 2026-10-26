@@ -8,6 +8,7 @@ import { SwaggerService } from '../services/petstore/SwaggerService';
 import { Pet } from '../models/petstore/pet';
 import { buildPet } from '../test-data/petstore/petFactory';
 import { HttpStatus } from '../test-data/httpStatus';
+import { setupStep } from './infrastructure';
 
 // All PetStore services on one client. A new service is added here - one line.
 function servicesFor(client: ApiClient) {
@@ -71,10 +72,10 @@ export const test = base.extend<PetStoreFixtures>({
   },
 
   // Seeded data that really exists on the server.
-  pet: async ({ petstore, petstoreCleanup }, use) => {
+  pet: async ({ petstore, petstoreCleanup }, use, testInfo) => {
     const pet = buildPet();
     petstoreCleanup.pet(pet.id);
-    const { status } = await petstore.pets.create(pet);
+    const { status } = await setupStep(testInfo, 'POST /pet', () => petstore.pets.create(pet));
     expect(status, 'precondition: POST /pet').toBe(HttpStatus.OK);
     await use(pet);
   },

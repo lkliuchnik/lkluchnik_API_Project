@@ -4,6 +4,7 @@ import { buildCredentials } from '../../test-data/bookstore/accountFactory';
 import { LOGIN_DATA_MISSING_MESSAGE, PASSWORD_TOO_WEAK_MESSAGE } from '../../test-data/bookstore/constants';
 import { HttpStatus } from '../../test-data/httpStatus';
 import { Tag } from '../../config/tags';
+import { skipIfGatewayError } from '../../fixtures/infrastructure';
 
 // Data-driven: the password rules of a new DemoQA account (POST /Account/v1/User) - one table,
 // one test body. Each row is one rule in plain words, and every row becomes its own test,
@@ -56,10 +57,6 @@ const REFUSALS = {
   'refused: missing': { status: HttpStatus.BAD_REQUEST, code: '1200', message: LOGIN_DATA_MISSING_MESSAGE },
 } satisfies Record<Exclude<Expected, 'accepted'>, unknown>;
 
-// 502/503/504 come from the gateway in front of DemoQA: the password never reached it, so the
-// rule cannot be judged - the test is skipped with the reason, not passed or failed.
-const GATEWAY_ERRORS: number[] = [HttpStatus.BAD_GATEWAY, HttpStatus.SERVICE_UNAVAILABLE, HttpStatus.GATEWAY_TIMEOUT];
-
 const title = (row: PasswordRule) => `${row.rule}: ${JSON.stringify(row.password)}`;
 
 // The one test body of the table.
@@ -71,8 +68,8 @@ async function checkPassword(
 
   const response = await bookstore.account.create(credentials);
 
-  const gatewayError = GATEWAY_ERRORS.includes(response.status);
-  test.skip(gatewayError, `infrastructure: POST /Account/v1/User answered ${response.status}`);
+  // a gateway error: the password never reached DemoQA - the rule cannot be judged
+  skipIfGatewayError(test.info(), 'POST /Account/v1/User', response.status);
   // a created account is closed after the test - also one that should have been refused
   if (response.status === HttpStatus.CREATED) accountCleanup.remember({ ...credentials, userId: response.body.userID });
 

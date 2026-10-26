@@ -17,6 +17,8 @@ In short
 - Step 3 (the data-driven password table): 10 findings - 9 fixed, 1 left on purpose.
 - Step 4 (schema validation): 8 findings - 7 fixed, 1 left on purpose; plus two mistakes of
   our own that the checks themselves caught before the review.
+- Step 5 (failure classification): 10 findings - 7 fixed, 3 kept on purpose and written
+  down.
 
 
 The files
@@ -30,6 +32,7 @@ The files
    04-data-driven-password-table.txt    step 3 - the data-driven password table
                                         (S4-1 ... S4-10)
    05-schema-validation.txt             step 4 - schema validation (S5-1 ... S5-8)
+   06-failure-classification.txt        step 5 - failure classification (S6-1 ... S6-10)
 
 The numbers (S2-5 and so on) stay the same in every file, so other documents can point to
 a finding by its number.

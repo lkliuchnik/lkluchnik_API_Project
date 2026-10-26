@@ -290,11 +290,16 @@ From fixtures/bookstore.fixture.ts:
    accountCleanup     closes every account after the test, also when the test fails.
                       First with the account's token; if that does not give 204, or no
                       token can be got (an account made by a boundary test can never log
-                      in), with the user name and password (Basic auth). An account it
-                      could not close is marked in the report as "leaked data", with
-                      what both ways answered.
+                      in), with the user name and password (Basic auth). If neither
+                      way gives a clear "deleted", it asks DemoQA whether the account
+                      still exists: gone = a "cleanup note", still there = "leaked data"
+                      with what both ways answered.
                       A test that opens an account itself calls remember(), and forget()
                       if it closed the account on its own.
+
+The setup steps of these fixtures (the catalog, a new reader, a new pet) skip the test
+with the reason "infrastructure: ..." when the server answers 502, 503, 504 or not at all
+(fixtures/infrastructure.ts) - an outage is shown as what it is, not as a failed test.
 
 From fixtures/petstore.fixture.ts (new in Stage 4):
    petstore           PetStore services (no login - the public server needs none)

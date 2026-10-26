@@ -1,0 +1,181 @@
+Why is the run red? Telling test, environment and infrastructure failures apart
+================================================================================
+
+When a CI run is red, the first question is not "how do I make it green", but "whose
+problem is it". This file explains the three kinds of failures we tell apart, the signs
+of each kind, the steps we follow with a red run, and six real cases from this project.
+It answers the Stage 5 task "analyze a failed pipeline run and classify the failure type
+(test vs environment vs infrastructure)".
+
+
+The short version
+-----------------
+
+   test             our test code or test data is wrong
+                    -> we fix the test
+   environment      the set-up of the run is wrong: an address, a password, a secret,
+                    a version, the pipeline itself
+                    -> we fix the configuration
+   infrastructure   a server or the network is down, overloaded or very slow
+                    -> we wait and run again; we report it if it lasts
+
+The most useful single question: "would the same run, with the same code and the same
+settings, pass tomorrow?" If yes, it is most likely infrastructure. If it fails the same
+way every time, it is a test or an environment problem - and the error message tells
+which one.
+
+A fourth case is not a failure at all: a known deviation. A test marked test.fail that
+fails as expected is green, and counted separately in the run summary ("known
+deviations"). Only when such a test suddenly passes does it turn red - the API changed.
+
+
+The signs of each kind
+----------------------
+
+Test - our mistake in a test:
+- the same test fails in every environment, at the same line, with the same values;
+- the retry fails the same way (not "flaky");
+- the other tests of the same API pass - the server works;
+- the request log shows a normal answer from the server; our expectation is different
+  (for example "Expected: 201, Received: 200" while the server always answers 200);
+- it fails locally too.
+
+Environment - the run is set up wrong:
+- often everything fails at once, or nothing runs at all;
+- the error names a setting: a missing variable ("DUMMYJSON_PASSWORD_DEV is not set"), a
+  wrong address, a wrong version, a step of the pipeline that cannot start;
+- it fails before or around the tests, not in a check of an API rule;
+- it is the same on every retry, and it passes locally (where the settings are right).
+
+Infrastructure - a server or the network:
+- only the tests of one server fail, in all environments at the same time;
+- the answers are 502 / 503 / 504, an HTML error page from a gateway (nginx), timeouts
+  ("no response from the server", "Test timeout of 60000ms exceeded"), or very slow
+  answers;
+- the request log shows the times: seconds instead of milliseconds;
+- the same tests passed shortly before and pass again later, with no change;
+- the same server is also slow or down when asked from another computer.
+
+
+What we do with a red run
+-------------------------
+
+1. Look at the job graph. Which job is red? "checks" red = the code or the plan; a test
+   job red = the tests; nothing started = the pipeline.
+2. Read the run Summary. Which suite, how many tests failed, which ones, in which
+   environment. Is there a WARNING that parts are missing? Are tests skipped with
+   "infrastructure: ..."?
+3. Open the log of the red step and find the error ("Search logs": Expected, Error,
+   Timeout). The short annotation "Process completed with exit code 1" only says THAT a
+   step failed, never WHY.
+4. Look at the request log of the failed test (api-log, in the log and in the report):
+   the status and the time of every request.
+5. Compare: other APIs in the same run? the other environment? the retry? the run
+   before? the same test locally?
+6. Decide the kind, with the signs above, and write it down - the reason, not only the
+   colour.
+7. Act: fix the test / fix the configuration / run again later and report the outage.
+   Never "fix" a test only to make a red run green before the kind is clear.
+
+
+What the project does to make this easier
+-----------------------------------------
+
+- The run Summary: passed, known deviations, failed, flaky, skipped, the pass rate, and
+  the names of the failed and flaky tests - per environment.
+- The main setup steps skip the test when they hit a server outage, with the reason
+  "infrastructure: <request> answered 502" (fixtures/infrastructure.ts). So such an
+  outage shows as skipped tests with a clear reason, not as failed tests - and it cannot
+  hide inside a test.fail as its "expected failure".
+     covered       reading the DemoQA catalog, opening a DemoQA reader account, creating
+                   a PetStore pet; the own requests of the bulk user tests and of the
+                   password table
+     what counts   502, 503, 504, and a request that ran out of time. Not a 500 (it comes
+                   from the application and can be a real bug), and not a wrong address or
+                   a refused connection (that is a wrong set-up - it must stay red)
+     not covered   the logins behind the logged-in clients (the DemoQA token, the DummyJSON
+                   token), DummyJSON's post-with-comments lookup, and setup requests
+                   written inside a test. An outage there still fails the test - or, in a
+                   test.fail, can still look like the expected failure. These are the next
+                   candidates if outages there show up.
+- If a part of the run (a shard, the browser job) did not finish, the Summary says
+  "WARNING: only 2 of 3 parts of this run finished".
+- Every test has a request log with the time of each request.
+- The account clean-up no longer reports a leak that is not one: when neither delete
+  gives a clear answer, it asks DemoQA whether the account still exists (POST
+  /Account/v1/Authorized with the name and password it was created with) and writes a
+  "cleanup note" instead of "leaked data" when it is gone. One limit: DemoQA answers 404
+  "User not found!" also for a wrong password - the check trusts that the remembered
+  password is the right one, which it is by construction.
+- The smoke suite is short on purpose (6 tests), so a slow server affects it as little
+  as possible.
+
+
+Six real cases
+--------------
+
+Case 1 - test (CI, on purpose) - run #24, 26 October 2026
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40331114534
+   What we saw: the smoke suite on the pull request was red in dev and in staging. In both,
+   5 of 6 tests passed; one failed: "a new pet can be read, changed and deleted".
+   The log: "Expected: 201, Received: 200" at the line that checks the answer of POST /pet.
+   The request log: "POST /pet -> 200" - a normal answer. The retry: the same error.
+   The kind: test. The server always answers 200 to POST /pet; the test expected the REST
+   habit 201 Created. Same line, same values, both environments, the retry too - and the
+   other PetStore smoke test passed, so the server worked.
+   Honest note: this mistake was made on purpose, in its own commit, to have a real CI
+   example of this kind; the next commit took it back (run #25, green).
+   Screenshots: screenshots/ci-pr-run-24-test-mistake-jobs.png, -summary.png,
+   -summary-staging.png, -annotations.png, -log.png, -log-retry.png;
+   after the fix: screenshots/ci-pr-run-25-after-revert.png
+
+Case 2 - environment (CI) - run #15, 26 October 2026
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40313872196
+   What we saw: only the browser test job was red, after 47 seconds, before any test.
+   The log of "npm ci": "Error response from daemon: No such container: Middle".
+   The kind: environment - the set-up of the pipeline. The job had just been moved into a
+   Docker container; inside a container, GitHub hands the working folder to Docker without
+   quotes, and our folder name "Week20. Middle Stage 4-5" has spaces. No test and no
+   server was involved.
+   Fix: the job starts in the repository root and goes into the folder itself.
+   More: ci-improvements.txt, part 2;
+         screenshots/ci-regression-run-15-ui-test-no-such-container.png
+
+Case 3 - infrastructure (CI) - the first smoke run of Stage 5, 26 October 2026
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40297804152
+   What we saw: smoke red in both environments; only the DemoQA test failed, with "Test
+   timeout of 60000ms exceeded"; every DemoQA request took 3 to 14 seconds. DummyJSON and
+   PetStore passed. DemoQA was just as slow from a local computer.
+   The kind: infrastructure - a very slow public server.
+   What we changed anyway: the DemoQA smoke test became much shorter (3 requests).
+   More: reports/2026-10-26-ci-smoke-demoqa-slow.txt
+
+Case 4 - infrastructure (local, staging) - 22 October 2026
+   A few seconds of "502 Bad Gateway, nginx" from DemoQA, answered in about 50 ms (the
+   request never reached the application). Different endpoints failed at once; green
+   before and after.
+   More: reports/2026-10-22-staging-demoqa-502.txt
+
+Case 5 - infrastructure (local, staging) - 23 October 2026
+   DemoQA answered, but in 5 to 21 seconds; three tests ran out of time. It also showed a
+   weakness of ours - a false "leaked data" note - which is fixed now (see above).
+   More: reports/2026-10-23-staging-demoqa-timeouts.txt
+
+Case 6 - test (local) - 26 October 2026, while writing the schema checks
+   A schema pointed to another schema with a wrong path. One test failed with "can't
+   resolve reference" - clearly ours. The same mistake in another schema was hidden: that
+   test is marked test.fail, so it "failed as expected" - for the wrong reason. Only
+   reading the reason of the expected failure showed it.
+   The lesson: classify by the reason in the log, never by the colour alone - also for
+   green "expected failures".
+   More: code-review-stage-5/05-schema-validation.txt
+
+
+What we have not seen in CI (yet)
+---------------------------------
+
+An environment failure because of a missing secret. It would look like this: every
+DummyJSON test fails with "DUMMYJSON_PASSWORD_DEV is not set. Locally: copy .env.example
+to .env ... In CI: add it as a repository secret", in the first second, in one
+environment only; the PetStore and DemoQA tests pass. We checked this locally by hiding
+the password (code-review-stage-5/01-tags-ci-suites-secrets.txt, S1-1).

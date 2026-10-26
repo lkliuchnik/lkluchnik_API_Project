@@ -510,16 +510,21 @@ What protects us today
   "infrastructure: ... answered 502" when the PetStore gateway answers 502, 503 or 504 -
   the server never saw the list, so the rule cannot be judged.
 
-Known weak spot (found in the Stage 4 review, code-review.txt, F2)
+A weak spot found in the Stage 4 review (code-review.txt, F2) - fixed in Stage 5
 - A short server outage (502) in a setup step (open an account, read the catalog, create
-  a pet) still makes a test.fail test "expected" instead of visible - at the time of the
+  a pet) used to make a test.fail test "expected" instead of visible - at the time of the
   review that was possible in 17 of the 33 test.fail tests.
-- The same happens when the request under test itself gets a gateway error (502, 503,
-  504) in a test.fail row that expects an error answer - for example the rejected dates
-  (34-36), the upload rows (29-33) and the PetStore error rows (24-27). Only the bulk
-  create tests skip on a gateway error today.
-- Planned for Stage 5, together with the failure classification: "infrastructure"
-  failures in setup steps will be shown as skipped, not hidden.
+- Fixed in Stage 5 for the main setup steps: reading the catalog, opening a reader
+  account and creating a pet now skip the test with the reason "infrastructure: ..." on
+  502, 503, 504 or a request that ran out of time (fixtures/infrastructure.ts). The bulk
+  create tests and the password table do the same for their own requests. Not yet covered:
+  the logins behind the logged-in clients and setup requests written inside a test
+  (helpers/failure-classification.txt lists them).
+- Still open: when the request under test itself (not a setup step) gets a gateway error
+  in a test.fail row that expects an error answer - the rejected dates (34-36), the upload
+  rows (29-33), the PetStore error rows (24-27) - the outage still counts as the expected
+  failure. It is rare (the request would have to fail exactly then) and these rows check
+  error answers, where a gateway error is one more error; we leave it.
 
 Fixed in the review fixes commit
 - Deviation 20 used to check "account created (201)" as a setup step. If DemoQA had

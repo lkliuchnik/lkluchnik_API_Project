@@ -2,6 +2,7 @@ import { test, expect, PetStoreApi } from '../../fixtures/petstore.fixture';
 import { PetStoreUser } from '../../models/petstore/user';
 import { buildPetStoreUser } from '../../test-data/petstore/petFactory';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { skipIfGatewayError } from '../../fixtures/infrastructure';
 import { Tag } from '../../config/tags';
 
 // Partial failures in a bulk operation: POST /user/createWithArray creates a LIST of users in
@@ -13,17 +14,13 @@ import { Tag } from '../../config/tags';
 // 502/503/504 come from the gateway in front of the PetStore: the request never reached the
 // server, so the rule cannot be judged. The test is then skipped with the reason - not passed
 // (it would read as "refused") and not counted as the expected failure of a test.fail.
-const GATEWAY_ERRORS: number[] = [HttpStatus.BAD_GATEWAY, HttpStatus.SERVICE_UNAVAILABLE, HttpStatus.GATEWAY_TIMEOUT];
-
-function skipIfGatewayError(request: string, status: number) {
-  test.skip(GATEWAY_ERRORS.includes(status), `infrastructure: ${request} answered ${status}`);
-}
+// (skipIfGatewayError: fixtures/infrastructure.ts)
 
 // 200 = the user is there, 404 = not there. Anything else does not answer the question,
 // so the test stops instead of reading it as "not there".
 async function exists(api: PetStoreApi, user: PetStoreUser) {
   const { status } = await api.users.get(user.username);
-  skipIfGatewayError(`GET /user/${user.username}`, status);
+  skipIfGatewayError(test.info(), `GET /user/${user.username}`, status);
   if (status !== HttpStatus.OK && status !== HttpStatus.NOT_FOUND) {
     throw new Error(`GET /user/${user.username} answered ${status} - cannot tell if the user exists`);
   }
@@ -41,7 +38,7 @@ test.describe('Bulk create: one invalid user in a list', { tag: Tag.REGRESSION }
     [first, broken, last].forEach((user) => petstoreCleanup.user(user.username));
 
     const { status, ok } = await petstore.users.createWithArray([first, broken, last]);
-    skipIfGatewayError('POST /user/createWithArray', status);
+    skipIfGatewayError(test.info(), 'POST /user/createWithArray', status);
 
     expect(ok, 'the request is reported as failed').toBe(false);
     expect.soft(await exists(petstore, first), `${first.username} (before the bad item)`).toBe(false);
@@ -56,7 +53,7 @@ test.describe('Bulk create: one invalid user in a list', { tag: Tag.REGRESSION }
     [first, last].forEach((user) => petstoreCleanup.user(user.username));
 
     const { status, ok } = await petstore.users.createWithArray([first, null, last]);
-    skipIfGatewayError('POST /user/createWithArray', status);
+    skipIfGatewayError(test.info(), 'POST /user/createWithArray', status);
 
     const created = [await exists(petstore, first), await exists(petstore, last)];
     expect(created, `answer ${ok ? 'success' : 'error'}: [first user exists, last user exists]`).toEqual([ok, ok]);
