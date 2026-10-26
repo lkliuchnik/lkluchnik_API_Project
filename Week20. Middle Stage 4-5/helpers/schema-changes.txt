@@ -62,6 +62,12 @@ What is covered
 The tests: tests/dummyjson/schemas.spec.ts, tests/bookstore/schemas.spec.ts,
 tests/petstore/schemas.spec.ts. The check itself: assertions/schemaAssertions.ts.
 
+In CI: they run in the regression suite (push to main, every night, or by hand). The first
+regression run with them, #22 on 26 October 2026, was green in both environments - also
+the contract check against the live PetStore swagger.
+   Link: https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40328109842
+   Screenshot: screenshots/ci-regression-run-22-schemas.png
+
 Why these: they are the answers the rest of the suite and a real client depend on most -
 logging in, the catalog, the cart, the account. Not covered on purpose: the PetStore list
 of all pets (GET /pet/findByStatus) - it is filled by everybody who uses the public server,
