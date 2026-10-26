@@ -111,6 +111,25 @@ What we changed
 After the change, the quick checks passed locally in both environments in about 4 seconds.
 
 
+The next run on the pull request
+--------------------------------
+
+We pushed the change, and GitHub ran the quick checks again on the same pull request.
+This time everything was green:
+
+   test (dev)        passed - the quick checks took 25 seconds
+   test (staging)    passed - 22 seconds
+   ui-test (dev)     skipped, as it should be for a pull request
+
+The whole run took 41 seconds (the red one took about 2.5 minutes).
+
+Link: https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40303076727
+Screenshot: ../screenshots/ci-pr-smoke-green-run-10.png
+
+Both runs - the red one and the green one - stay in the history of the pull request, so
+anyone can see the failure, the reason and the fix one after another.
+
+
 What we learned
 ---------------
 
