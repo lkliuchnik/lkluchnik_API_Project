@@ -12,7 +12,9 @@ test('a new pet can be read, changed and deleted', { tag: [Tag.REGRESSION, Tag.S
 
   await test.step('POST /pet creates the pet', async () => {
     const { status, body } = await petstore.pets.create(pet);
-    expect(status).toBe(HttpStatus.OK); // PetStore answers 200, not 201
+    // DELIBERATE MISTAKE for the failure classification demo (Middle Stage 5, step 5): the test
+    // expects the REST habit "201 Created", but the PetStore answers 200. Reverted in the next commit.
+    expect(status).toBe(HttpStatus.CREATED);
     expect(body).toEqual(pet);
   });
 
