@@ -51,6 +51,25 @@ when Playwright is updated one day, the image follows by itself.
 
 The browser job also skips installing Node.js - the image already has it.
 
+What went wrong the first time: the first run in the image (run #15) failed after 47
+seconds, before any test started, with a strange message:
+
+   Error response from daemon: No such container: Middle
+
+"Middle" is a word from our folder name, "Week20. Middle Stage 4-5". Inside a container,
+GitHub starts every step in the job's working folder - and it hands that folder to Docker
+without quotes. Docker split the name at the spaces and took "Middle" for the name of a
+container. Jobs on a plain GitHub machine do not have this problem, so we had never seen
+it before.
+
+The fix: the browser job now starts in the root of the repository (no spaces there) and
+goes into the week folder itself, with the name in quotes. A lesson for later: folder
+names with spaces work almost everywhere, until they suddenly do not.
+
+In our three kinds of failures this one was neither the test nor the website: it was the
+set-up of the run itself - the "environment" kind.
+Screenshot: screenshots/ci-regression-run-15-ui-test-no-such-container.png
+
 Nothing else changed: the API test jobs never needed a browser, and the tests, the
 reports and the numbers are the same.
 

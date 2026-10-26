@@ -153,11 +153,18 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.checks.outputs.playwright }}-noble
       options: --user 1001 # the runner's user, so the job may write into the checked-out folder
+    defaults:
+      run:
+        # A container job cannot start a step in a folder whose name has spaces: GitHub passes
+        # the path to Docker unquoted, and Docker reads "Middle" as a container name ("No such
+        # container: Middle"). So this job starts in the repository root and goes into the
+        # week folder itself, with the name in quotes.
+        working-directory: .
     steps:
       - uses: actions/checkout@v4
       # no setup-node here: the image already has Node and the browser
-      - run: npm ci
-      - run: npx playwright test --grep @ui
+      - run: cd "Week20. Middle Stage 4-5" && npm ci
+      - run: cd "Week20. Middle Stage 4-5" && npx playwright test --grep @ui
         env:
           TEST_ENV: dev # no secrets: the UI test uses DemoQA only
           REPORT_PART: dev-ui

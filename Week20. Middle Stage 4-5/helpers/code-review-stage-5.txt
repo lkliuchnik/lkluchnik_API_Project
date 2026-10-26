@@ -260,5 +260,7 @@ S3-6. A wrong reason in ci-improvements.txt
 How it was checked
    - The workflow file parsed without errors; the line that writes the version gives
      "playwright=1.63.0" here, the version in package-lock.json.
-   - The real check is the next regression run: the browser job must start in the image
-     and pass without installing anything.
+   - The real check was the next regression run (#15) - and it found a problem no review
+     had seen: inside a container, a working folder with spaces in its name does not
+     work ("No such container: Middle"). The browser job now starts in the repository
+     root and goes into the week folder itself (ci-improvements.txt, part 2).
