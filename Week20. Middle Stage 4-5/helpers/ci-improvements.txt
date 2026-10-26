@@ -9,8 +9,8 @@ improvements to test organization in CI". Each idea comes from a real run, with 
 The short version
 -----------------
 
-   1. A lighter quick check for DemoQA            done
-   2. The browser test in a ready-made image      done
+   1. A lighter quick check for DemoQA            done   (smoke: ~2.5 min -> 25 s)
+   2. The browser test in a ready-made image      done   (11 min 46 s -> 1 min 20 s)
    3. Uneven halves when the tests are split      noticed, not changed (yet)
 
 
@@ -73,7 +73,17 @@ Screenshot: screenshots/ci-regression-run-15-ui-test-no-such-container.png
 Nothing else changed: the API test jobs never needed a browser, and the tests, the
 reports and the numbers are the same.
 
-   after:   (filled in after the next regression run)
+   run #17, after:    ui-test 1 min 20 s:
+                         starting the image      40 s
+                         npm ci                   2 s
+                         the browser test        29 s
+                      the whole regression run: 4 min 53 s (run #13: 12 min 26 s)
+
+   Link: https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40315958722
+   Screenshot: screenshots/ci-regression-run-17.png
+
+The browser job is no longer the slowest part of the run - the API test halves are
+(about 4 minutes, mostly DemoQA). So the next place to save time is part 3 below.
 
 
 3. Uneven halves when the tests are split
@@ -119,4 +129,4 @@ Other small things we noticed
   newer versions of these actions are out for a while, we update them in one go.
 - The "time" in the run summary is from the first test to the last one, over all parts.
   In run #13 the dev time (11 min 31 s) included the browser test waiting for its install.
-  With the ready-made image this number should become close to the slowest half.
+  With the ready-made image it should now be close to the slowest half.

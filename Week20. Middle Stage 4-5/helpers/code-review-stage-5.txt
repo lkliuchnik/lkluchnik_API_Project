@@ -154,6 +154,10 @@ S2-2. A missing half looked like a good run
    Decision:  fixed. The report job knows how many parts were planned (from the plan the
               "checks" job made). If fewer arrived, the Summary starts with "WARNING: only
               1 of 3 parts of this run finished - the numbers below are incomplete."
+   Seen live: in run #15 the browser test job failed before it started, and the dev
+              summary said "WARNING: only 2 of 3 parts of this run finished" above a
+              table that would otherwise have looked all green (152 tests, 100%).
+              Screenshot: screenshots/ci-regression-run-15-summary-warning.png
 
 S2-3. A cancelled run still made reports
    Found:     when a newer push to the pull request cancels an older run, the report jobs
