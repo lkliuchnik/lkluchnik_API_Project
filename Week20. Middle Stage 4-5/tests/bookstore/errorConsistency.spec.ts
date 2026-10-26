@@ -6,6 +6,7 @@ import { Book } from '../../models/bookstore/book';
 import { buildCredentials } from '../../test-data/bookstore/accountFactory';
 import { UNKNOWN_ISBN } from '../../test-data/bookstore/constants';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Error consistency: every DemoQA endpoint answers an error the same way - a JSON body of
 // exactly { code, message } with a DemoQA error code (expectBookStoreError). Different
@@ -101,7 +102,7 @@ const withReader: (ErrorCase & { send: (c: ReaderContext) => Promise<ApiResponse
   },
 ];
 
-test.describe('DemoQA errors have one shape on every endpoint', () => {
+test.describe('DemoQA errors have one shape on every endpoint', { tag: Tag.REGRESSION }, () => {
   for (const c of withoutAccount) {
     test(`${c.title}: ${c.status} code ${c.code}`, async ({ bookstore, accountCleanup }) => {
       const response = await c.send(bookstore);

@@ -2,6 +2,7 @@ import { test, expect } from '../../fixtures/petstore.fixture';
 import { expectPetStoreError } from '../../assertions/petstore/errorAssertions';
 import { buildOrder } from '../../test-data/petstore/petFactory';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Boundary value analysis for a date: shipDate of POST /store/order (a date-time, swagger
 // format "date-time"). The limits of a date are the calendar itself: the last day of a month,
@@ -33,7 +34,7 @@ const rejected = [
   { title: 'one year past 9999: 10000-01-01 is rejected with 400', shipDate: '10000-01-01T00:00:00.000Z' },
 ];
 
-test.describe('Boundaries: POST /store/order shipDate (date-time)', () => {
+test.describe('Boundaries: POST /store/order shipDate (date-time)', { tag: Tag.REGRESSION }, () => {
   for (const c of accepted) {
     test(c.title, async ({ petstore, petstoreCleanup }) => {
       const order = buildOrder({ shipDate: c.shipDate });

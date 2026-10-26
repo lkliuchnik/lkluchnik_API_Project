@@ -3,6 +3,7 @@ import { expectBookStoreError } from '../../assertions/bookstore/errorAssertions
 import { BookStoreSession } from '../../services/bookstore/BookStoreSession';
 import { buildCredentials } from '../../test-data/bookstore/accountFactory';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Boundary value analysis for a new DemoQA account (POST /Account/v1/User).
 // Every account a test opens is closed by the accountCleanup hook - if it cannot get a token,
@@ -14,7 +15,7 @@ function passwordOfLength(length: number) {
   return 'Qa!1' + 'z'.repeat(length - 4);
 }
 
-test.describe('Boundaries: password length', () => {
+test.describe('Boundaries: password length', { tag: Tag.REGRESSION }, () => {
   test('below the minimum: 7 characters are rejected', async ({ bookstore, accountCleanup }) => {
     const credentials = buildCredentials({ password: passwordOfLength(7) });
 
@@ -40,7 +41,7 @@ test.describe('Boundaries: password length', () => {
 // The two fields share one limit, so it is crossed from either side.
 const MAX_NAME_AND_PASSWORD = 84;
 
-test.describe('Boundaries: user name + password length (login token)', () => {
+test.describe('Boundaries: user name + password length (login token)', { tag: Tag.REGRESSION }, () => {
   test(`the maximum: ${MAX_NAME_AND_PASSWORD} characters together can log in`, async ({
     bookstore,
     accountCleanup,

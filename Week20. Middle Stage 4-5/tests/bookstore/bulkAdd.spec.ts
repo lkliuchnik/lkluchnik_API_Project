@@ -2,6 +2,7 @@ import { test, expect, BookStoreApi } from '../../fixtures/bookstore.fixture';
 import { expectBookStoreError } from '../../assertions/bookstore/errorAssertions';
 import { UNKNOWN_ISBN } from '../../test-data/bookstore/constants';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Partial failures in a bulk operation: POST /BookStore/v1/Books adds a LIST of books in one
 // request. What a correct bulk API may do with a list that has bad items in it:
@@ -17,7 +18,7 @@ async function isbnsOf(api: BookStoreApi, userId: string) {
   return body.books.map((book) => book.isbn);
 }
 
-test.describe('Bulk add: one unknown ISBN in a list of books', () => {
+test.describe('Bulk add: one unknown ISBN in a list of books', { tag: Tag.REGRESSION }, () => {
   // the position of the bad item must not matter: first, in the middle, last
   const positions = [
     { title: 'first', list: (good: string[]) => [UNKNOWN_ISBN, ...good] },
@@ -70,7 +71,7 @@ test.describe('Bulk add: one unknown ISBN in a list of books', () => {
   });
 });
 
-test.describe('Bulk add: no good item in the list', () => {
+test.describe('Bulk add: no good item in the list', { tag: Tag.REGRESSION }, () => {
   // known deviation: 201 although nothing was added; a list of ONE unknown ISBN gets the
   // correct 400 code 1205 - the check runs only for one-book requests
   test.fail('a list of unknown ISBNs only is rejected like a single one', async ({ reader, readerApi }) => {

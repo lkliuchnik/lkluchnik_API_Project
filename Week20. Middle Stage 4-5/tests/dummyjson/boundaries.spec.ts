@@ -1,5 +1,6 @@
 import { test, expect, DummyJsonApi } from '../../fixtures/dummyjson.fixture';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Boundary value analysis: for every parameter the values just below, on and just above
 // each limit. Limits that depend on data (the number of products) are read from the API,
@@ -23,7 +24,7 @@ const acceptedLimits = [
   { title: 'above the maximum: total + 1 gives all products', limit: (total: number) => total + 1, items: (total: number) => total },
 ];
 
-test.describe('Boundaries: GET /products limit', () => {
+test.describe('Boundaries: GET /products limit', { tag: Tag.REGRESSION }, () => {
   test('below the minimum: limit -1 is rejected', async ({ api }) => {
     const { status, body } = await api.products.getPage(-1, 0);
 
@@ -53,7 +54,7 @@ const acceptedSkips = [
   { title: 'past the end: total + 1 is an empty page, not an error', skip: (total: number) => total + 1, items: 0 },
 ];
 
-test.describe('Boundaries: GET /products skip', () => {
+test.describe('Boundaries: GET /products skip', { tag: Tag.REGRESSION }, () => {
   test('below the minimum: skip -1 is rejected', async ({ api }) => {
     const { status, body } = await api.products.getPage(PAGE_SIZE, -1);
 
@@ -78,7 +79,7 @@ test.describe('Boundaries: GET /products skip', () => {
 // GET /test?delay= : the server waits this many milliseconds before it answers. Max 5000.
 const MAX_DELAY_MS = 5000;
 
-test.describe('Boundaries: GET /test delay', () => {
+test.describe('Boundaries: GET /test delay', { tag: Tag.REGRESSION }, () => {
   const rejected = [
     {
       title: 'below the minimum: delay -1 is rejected',
@@ -129,7 +130,7 @@ function tokenLifetimeSeconds(token: string) {
 
 const MAX_TOKEN_MINUTES = 43200;
 
-test.describe('Boundaries: POST /auth/login expiresInMins', () => {
+test.describe('Boundaries: POST /auth/login expiresInMins', { tag: Tag.REGRESSION }, () => {
   // known deviation: 200 and a token for 30 days - the longest one, not a rejection
   test.fail('below the minimum: 0 minutes is rejected', async ({ api, env }) => {
     const { status } = await api.auth.login(env.dummyjson.username, env.dummyjson.password, 0);

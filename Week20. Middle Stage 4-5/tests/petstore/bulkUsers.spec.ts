@@ -2,6 +2,7 @@ import { test, expect, PetStoreApi } from '../../fixtures/petstore.fixture';
 import { PetStoreUser } from '../../models/petstore/user';
 import { buildPetStoreUser } from '../../test-data/petstore/petFactory';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Partial failures in a bulk operation: POST /user/createWithArray creates a LIST of users in
 // one request. The rule checked here: if the request fails, NOBODY from the list is created
@@ -29,7 +30,7 @@ async function exists(api: PetStoreApi, user: PetStoreUser) {
   return status === HttpStatus.OK;
 }
 
-test.describe('Bulk create: one invalid user in a list', () => {
+test.describe('Bulk create: one invalid user in a list', { tag: Tag.REGRESSION }, () => {
   // a field of the wrong type: the list cannot be read at all, so nothing is processed
   test('a user with a wrong field type: the request fails and nobody is created', async ({
     petstore,

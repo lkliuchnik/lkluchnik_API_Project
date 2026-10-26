@@ -1,9 +1,10 @@
 import { test, expect } from '../../fixtures/bookstore.fixture';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Scenarios from the coverage gap analysis (helpers/coverage-gaps.txt): changing a whole
 // collection at once.
-test.describe('Collection changes', () => {
+test.describe('Collection changes', { tag: Tag.REGRESSION }, () => {
   // gaps S7 + S6
   test('the owner can empty the whole collection; without the owner token nobody can', async ({
     reader,

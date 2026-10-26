@@ -1,10 +1,11 @@
 import { test, expect } from '../../fixtures/dummyjson.fixture';
 import { HttpStatus } from '../../test-data/httpStatus';
 import { NON_EXISTENT_ID } from '../../test-data/dummyjson/constants';
+import { Tag } from '../../config/tags';
 
 // Written with the new CommentService only, plus the postWithComments fixture (existing data
 // found before the test).
-test.describe('Comments', () => {
+test.describe('Comments', { tag: Tag.REGRESSION }, () => {
   test('every comment of a post points to that post', async ({ postWithComments }) => {
     const { post, comments } = postWithComments;
 

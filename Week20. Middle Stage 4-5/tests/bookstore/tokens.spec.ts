@@ -1,9 +1,10 @@
 import { test, expect } from '../../fixtures/bookstore.fixture';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Scenarios from the coverage gap analysis (helpers/coverage-gaps.txt): how DemoQA handles
 // tokens and passwords.
-test.describe('Tokens and passwords', () => {
+test.describe('Tokens and passwords', { tag: Tag.REGRESSION }, () => {
   // gap S2 - this rule also explains why API calls after a UI login fail (helpers/ai-review.txt)
   test('only the newest token of an account works: a new login ends the old token', async ({
     reader,

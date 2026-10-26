@@ -32,6 +32,9 @@ In this folder:
    npm ci                              install the packages (once)
    npx playwright install chromium     install the browser for the one API + UI test
                                        (once)
+   cp .env.example .env                make your local settings (once), then fill in the
+                                       two DummyJSON passwords - see part 4
+   npm run test:smoke                  6 tests: is everything up? (about 20 s)
    npx playwright test                 run all tests in the dev environment
 
 A full run takes about 3 minutes: one test waits a real minute for a token to expire.
@@ -212,8 +215,25 @@ Choose one when you run the tests:
 
    TEST_ENV=staging npx playwright test        (dev is the default)
 
-One value can be changed without touching the file, with a variable in .env or in CI:
-DUMMYJSON_URL, DUMMYJSON_USERNAME, DUMMYJSON_PASSWORD, BOOKSTORE_URL, PETSTORE_URL.
+Secrets are not in the code. The DummyJSON password of each environment comes from a
+variable: DUMMYJSON_PASSWORD_DEV and DUMMYJSON_PASSWORD_STAGING.
+   locally   in the file .env (copy .env.example, fill it in; .env is never committed)
+   in CI     GitHub Secrets with the same names (Settings > Secrets and variables >
+             Actions); the workflow passes them to the tests
+The password is read only when a test logs in to DummyJSON. If it is missing, every
+DummyJSON test fails with the same clear message, and the tests of the other APIs still run:
+   DUMMYJSON_PASSWORD_DEV is not set. Locally: copy .env.example to .env ...
+The DummyJSON user is fixed per environment and cannot be overridden - a user without its
+own password would only fail to log in.
+
+Other values can be changed without touching the file, with a variable in .env or in CI:
+DUMMYJSON_URL, BOOKSTORE_URL, PETSTORE_URL.
+
+Local run vs CI run (playwright.config.ts, switched by the CI variable):
+   local     no retries, list reporter, a trace is kept for a failed test
+   CI        1 retry (a test that passes only then is "flaky"), HTML report, test.only
+             forbidden, no trace (it would record the login password) - except for
+             the UI test, which keeps its trace and gets a screenshot when it fails
 
 A wrong name stops the run with a clear message:
    Unknown TEST_ENV "prod". Use one of: dev, staging
@@ -404,6 +424,11 @@ In this folder:
    npm ci                                install the packages
    npx tsc --noEmit                      check the types
    npx playwright test                   all tests, environment dev
+   npm run test:smoke                    the smoke suite (tag @smoke, 6 tests)
+   npm run test:regression               the regression suite (tag @regression - all
+                                         tests except the 1-minute token test)
+   npm run test:full                     everything
+   npm run test:smoke -- --grep-invert @ui   a suite without the browser test (as in CI)
    TEST_ENV=staging npx playwright test  all tests, environment staging
    npx playwright test tests/petstore    one folder
    npx playwright test --grep-invert @ui only the API tests
@@ -417,9 +442,12 @@ In this folder:
 On Windows PowerShell: $env:TEST_ENV="staging"; npx playwright test
 
 CI (.github/workflows/week20-middle4-5.yml) runs the API tests in dev and staging, and
-the API + UI test in its own job (ui-test), on every push or pull request to main that
-changes this folder or the workflow, and on demand (workflow_dispatch). In CI a failed
-test is retried once.
+the API + UI test in its own job (ui-test). Which suite runs depends on what started it:
+   pull request to main   smoke         (no UI job)
+   push to main           regression    + the UI job
+   every night 02:00 UTC  full          + the UI job
+   by hand (Run workflow) the suite you choose
+In CI a failed test is retried once.
 
 
 12. Rules we keep
@@ -450,7 +478,13 @@ test is retried once.
 - Limits that depend on data are read from the API, not written into the test.
 - Only add a shared helper when it is a real rule used by several tests. Two similar
   lines are not a reason for a helper.
-- A test that needs a browser gets the tag @ui; a test that waits a long time gets @slow.
+- Every test has a suite tag, from config/tags.ts (never the plain text): a describe
+  block gets Tag.REGRESSION; a test that also belongs to smoke adds Tag.SMOKE; a test
+  that waits a long time gets Tag.SLOW (and no REGRESSION); a test that needs a browser
+  gets Tag.UI.
+- Smoke stays small: one or two happy paths per API, no test.fail, under a minute. CI
+  fails when a test has neither Tag.REGRESSION nor Tag.SLOW (step "Every test is in a
+  suite"), so a forgotten tag cannot silently drop a test from regression.
 - API + UI tests: prepare the data through the API FIRST, then log in through the UI.
 
 

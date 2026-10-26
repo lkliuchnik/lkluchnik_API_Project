@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/dummyjson.fixture';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // An asynchronous change on a real server: a token is fine now and stops working later,
 // without any request from us. The test cannot know the exact second, so it asks again
@@ -9,7 +10,7 @@ import { HttpStatus } from '../../test-data/httpStatus';
 const LIFETIME_MS = 60_000;
 const POLL_EVERY_MS = 5_000;
 
-test('a 1-minute token works at first and is refused once the minute is over', { tag: '@slow' }, async ({
+test('a 1-minute token works at first and is refused once the minute is over', { tag: Tag.SLOW }, async ({
   api,
   env,
 }) => {

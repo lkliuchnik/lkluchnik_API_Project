@@ -2,11 +2,17 @@ import { test, expect } from '../../fixtures/bookstore.fixture';
 import { LoginPage } from '../../pages/bookstore/LoginPage';
 import { ProfilePage } from '../../pages/bookstore/ProfilePage';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
+
+// A trace also in CI (where traces are off - playwright.config.ts): for a browser test it is
+// the best way to see what went wrong. It holds no secret: the account is new and is closed
+// after the test, and this test does not log in to DummyJSON.
+test.use({ trace: 'retain-on-failure' });
 
 // API + UI: the data is prepared through the API (fast, exact, no clicking through the
 // store), and the UI is checked the way a reader sees it. Why both: helpers/modality.txt.
 // Order matters: API setup first, UI login second - a UI login replaces the account's token.
-test('books added through the API are shown on the reader profile after a UI login', { tag: '@ui' }, async ({
+test('books added through the API are shown on the reader profile after a UI login', { tag: [Tag.UI, Tag.REGRESSION] }, async ({
   reader,
   readerApi,
   catalog,

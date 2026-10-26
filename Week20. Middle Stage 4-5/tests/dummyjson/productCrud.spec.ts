@@ -2,8 +2,9 @@ import { test, expect } from '../../fixtures/dummyjson.fixture';
 import { buildProduct } from '../../test-data/dummyjson/productFactory';
 import { HttpStatus } from '../../test-data/httpStatus';
 import { NON_EXISTENT_ID } from '../../test-data/dummyjson/constants';
+import { Tag } from '../../config/tags';
 
-test.describe('Product CRUD', () => {
+test.describe('Product CRUD', { tag: Tag.REGRESSION }, () => {
   // known deviation: DummyJSON does not save changes, see assertion-notes.txt
   test.fail('full CRUD flow: create, read, update, delete, verify absence', async ({ api }) => {
     const newProduct = buildProduct();

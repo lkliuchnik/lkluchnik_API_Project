@@ -2,8 +2,9 @@ import { test, expect } from '../../fixtures/dummyjson.fixture';
 import { expectCartTotalsConsistent } from '../../assertions/dummyjson/cartAssertions';
 import { HttpStatus } from '../../test-data/httpStatus';
 import { NON_EXISTENT_ID } from '../../test-data/dummyjson/constants';
+import { Tag } from '../../config/tags';
 
-test.describe('Cart business rules', () => {
+test.describe('Cart business rules', { tag: Tag.REGRESSION }, () => {
   test('the logged-in user sees only their own carts, with correct totals', async ({ api, authToken, env }) => {
     // Step 1: the token (from the login in the fixture) tells us who the user is
     const { status: meStatus, body: me } = await api.auth.getCurrentUser(authToken);

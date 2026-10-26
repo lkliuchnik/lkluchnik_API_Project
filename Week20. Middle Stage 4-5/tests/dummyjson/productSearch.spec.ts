@@ -1,9 +1,10 @@
 import { test, expect } from '../../fixtures/dummyjson.fixture';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // A new endpoint in an existing service: one method, ProductService.search(), and this
 // test. Nothing else in the project changed. See helpers/README.txt, part 7.
-test.describe('Product search', () => {
+test.describe('Product search', { tag: Tag.REGRESSION }, () => {
   test('search returns only products whose title or description contains the word', async ({ api }) => {
     const word = 'phone';
 

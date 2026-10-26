@@ -1,8 +1,9 @@
 import { test, expect } from '../../fixtures/dummyjson.fixture';
 import { buildUser } from '../../test-data/dummyjson/userFactory';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
-test.describe('User data', () => {
+test.describe('User data', { tag: Tag.REGRESSION }, () => {
   test('a new user created as admin gets the admin role', async ({ api }) => {
     const newAdmin = buildUser({ role: 'admin' }); // only the role matters here, the rest are defaults
 

@@ -1,12 +1,13 @@
 import { test, expect } from '../../fixtures/bookstore.fixture';
 import { buildCredentials } from '../../test-data/bookstore/accountFactory';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Rules of the book store itself - not "is the field there", but "does the store keep its
 // promises". Each test gets a new reader (an account that really exists) from the fixture.
 // The rules of POST /BookStore/v1/Books (catalog books only, a book once) are in
 // addBooksNegative.spec.ts, together with the other negative tests of that endpoint.
-test.describe('Book store business rules', () => {
+test.describe('Book store business rules', { tag: Tag.REGRESSION }, () => {
   // known deviation: DemoQA allows the same book twice, see assertion-notes.txt
   test.fail('replacing a book with one the reader already has is rejected, too', async ({
     reader,

@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/petstore.fixture';
 import { buildPet } from '../../test-data/petstore/petFactory';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Idempotency: sending the same request a second time leaves the server in the same state as
 // sending it once. PUT and DELETE must work this way - it is what makes a retry safe (the
@@ -8,7 +9,7 @@ import { HttpStatus } from '../../test-data/httpStatus';
 // to, and the client never retries it.
 // The answer to the second request may differ (DELETE: 200, then 404) - the STATE must not.
 
-test.describe('Idempotency: the same request twice', () => {
+test.describe('Idempotency: the same request twice', { tag: Tag.REGRESSION }, () => {
   test('PUT /pet twice with the same body: the pet is the same after the second PUT', async ({ petstore, pet }) => {
     const changed = { ...pet, name: `${pet.name}-renamed`, status: 'sold' as const };
 
