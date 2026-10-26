@@ -4,7 +4,11 @@ import { ApiResponse } from '../../models/common';
 import { Credentials } from '../../models/bookstore/account';
 import { Book } from '../../models/bookstore/book';
 import { buildCredentials } from '../../test-data/bookstore/accountFactory';
-import { UNKNOWN_ISBN } from '../../test-data/bookstore/constants';
+import {
+  LOGIN_DATA_MISSING_MESSAGE,
+  PASSWORD_TOO_WEAK_MESSAGE,
+  UNKNOWN_ISBN,
+} from '../../test-data/bookstore/constants';
 import { HttpStatus } from '../../test-data/httpStatus';
 import { Tag } from '../../config/tags';
 
@@ -41,7 +45,7 @@ const withoutAccount: (ErrorCase & {
     opens: EMPTY_LOGIN,
     status: HttpStatus.BAD_REQUEST,
     code: '1200',
-    message: 'UserName and Password required.',
+    message: LOGIN_DATA_MISSING_MESSAGE,
   },
   {
     title: 'POST /Account/v1/User - weak password',
@@ -49,9 +53,7 @@ const withoutAccount: (ErrorCase & {
     opens: WEAK_PASSWORD,
     status: HttpStatus.BAD_REQUEST,
     code: '1300',
-    message:
-      "Passwords must have at least one non alphanumeric character, one digit ('0'-'9'), one uppercase ('A'-'Z'), " +
-      "one lowercase ('a'-'z'), one special character and Password must be eight characters or longer.",
+    message: PASSWORD_TOO_WEAK_MESSAGE,
   },
   {
     title: 'POST /Account/v1/Authorized - unknown user',

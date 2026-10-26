@@ -40,7 +40,7 @@ export type ReaderAccount = Credentials & { userId: string };
 // readerApi and the cleanup all use ONE token (DemoQA keeps only the newest token anyway).
 export type Reader = ReaderAccount & { session: BookStoreSession };
 
-type AccountCleanup = {
+export type AccountCleanup = {
   remember(account: ReaderAccount, session?: BookStoreSession): void; // close it after the test
   forget(userId: string): void; // the test closed it itself - nothing to clean up
 };

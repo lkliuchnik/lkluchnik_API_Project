@@ -2,20 +2,20 @@ What the tests check, and where the APIs are wrong
 ==================================================
 
 What this file is for: it explains the checks in the tests - which rules they protect,
-why some checks are written the way they are - and lists the 36 places where an API does
+why some checks are written the way they are - and lists the 37 places where an API does
 not do what it should. The spec files point here with "see assertion-notes.txt".
 
 
 In short
 --------
 
-- 154 tests: 118 pass normally, 36 are marked test.fail (known API deviations).
-- The 36 deviations: 8 in DummyJSON, 15 in DemoQA Book Store, 13 in PetStore.
-  8 of them are older (weeks 18-19), 28 were found in Middle Stage 4.
+- 166 tests: 129 pass normally, 37 are marked test.fail (known API deviations).
+- The 37 deviations: 8 in DummyJSON, 16 in DemoQA Book Store, 13 in PetStore.
+  8 of them are older (weeks 18-19), 28 were found in Middle Stage 4, 1 in Middle Stage 5.
 - A test.fail test still checks exactly what a correct API should do. It is marked because
   the real API answers differently. No check was changed to make a test green.
-- All 36 failed at the same check, with the same expected value, in three runs in a row
-  (reports/stability/2026-10-23-three-runs.txt).
+- The 36 of Stage 4 failed at the same check, with the same expected value, in three runs
+  in a row (reports/stability/2026-10-23-three-runs.txt).
 - The tests check the rule behind an answer - "nothing was added", "the answer lists what
   really happened", "every error has the same shape" - not only the status code.
 
@@ -25,7 +25,7 @@ Contents
 
    1. The main rule
    2. Known deviations - DummyJSON (1-8)
-   3. Known deviations - DemoQA Book Store (9-23)
+   3. Known deviations - DemoQA Book Store (9-23, 37)
    4. Known deviations - PetStore (24-36)
    5. Seen by hand, not written as a test
    6. The rules the tests protect
@@ -123,8 +123,8 @@ saves nothing. Deviations 1-5 are known since week 18.
    API:    404 with an HTML page. Every real endpoint answers with { message }.
 
 
-3. Known deviations - DemoQA Book Store (9-23)
-----------------------------------------------
+3. Known deviations - DemoQA Book Store (9-23, 37)
+--------------------------------------------------
 
 DemoQA errors normally look like { "code": "1205", "message": "..." }. The code is
 DemoQA's own error number, and the tests check it too. Deviations 9-11 are known since
@@ -243,6 +243,19 @@ week 19.
            1207 means "User not found!" and also "Collection of books required."
    Note:   the test collects code -> messages over four answers, so the report shows both
            codes with both messages.
+
+
+37. A dot does not count as a special character (found in Middle Stage 5)
+   Test:   bookstore/passwordRules.spec.ts (the data-driven password table)
+           'a dot is a special character too: "Test.123"'
+   Rule:   DemoQA's own error asks for "at least one non alphanumeric character" - a dot is
+           one, so "Test.123" meets every rule of the message.
+   API:    400, code 1300 - refused as too weak.
+   Note:   checked live with 31 characters: DemoQA counts only ! @ # $ % ^ & * as special
+           characters. Everything else (. , - _ ? + = ( ) and so on, and a space) is
+           refused.
+           A user who reads the message and picks a dot gets a refusal the message does
+           not explain. The number is 37 because it was found after the PetStore ones.
 
 
 4. Known deviations - PetStore (24-36)
