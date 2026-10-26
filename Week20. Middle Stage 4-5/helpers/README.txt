@@ -103,6 +103,14 @@ Shared by all APIs
    models/common.ts            ApiResponse<T> and other shapes all APIs share
    test-data/httpStatus.ts     status codes with names
    fixtures/base.fixture.ts    env and the request log
+   config/tags.ts              the suite tags (smoke, regression, slow, ui)
+
+Reports (used by CI)
+   merge.config.ts             how CI glues the parts of a run into one HTML report and
+                               one JSON file
+   allurerc.mjs                the Allure report settings, with the run history
+   scripts/ci-summary.js       turns the JSON file into the numbers on the run's Summary
+                               page
 
 One folder per API inside each layer
 
@@ -438,6 +446,9 @@ In this folder:
                                          one file three times - before a commit
    npx playwright test --reporter=html   all tests, with the HTML report
    npm run test:report                   open that HTML report
+   CI=1 npm run test:smoke               a run like CI: it also writes the raw Allure
+                                         results (allure-results/)
+   npm run allure:report                 build the Allure report from them and open it
 
 On Windows PowerShell: $env:TEST_ENV="staging"; npx playwright test
 
@@ -448,6 +459,26 @@ the API + UI test in its own job (ui-test). Which suite runs depends on what sta
    every night 02:00 UTC  full          + the UI job
    by hand (Run workflow) the suite you choose
 In CI a failed test is retried once.
+
+How a CI run is built - think of it as four groups of jobs, one after another:
+
+   checks     a quick look before anything else: do the types compile, does every test
+              have a suite tag, and which tests does this run need. If this fails,
+              nothing else starts - no point in running tests on broken code.
+   test       the API tests themselves - one job per environment. For regression and
+              the night run, the dev tests are split in two halves ("shards") that run
+              on two machines at the same time, so the run finishes sooner.
+   ui-test    the browser test, at the same time as the API tests (not for smoke).
+   report     one per environment, after all tests are done - also when some failed.
+              It glues the halves together and produces what you download from the run:
+                 playwright-report-...   the HTML report (open index.html)
+                 allure-report-...       the Allure report, with charts of the last runs
+                 results-json-...        the raw numbers (used later by the AI triage)
+              It also writes a small table into the run's Summary page: how many tests
+              passed, failed, were flaky, and the pass rate.
+
+The Allure report remembers the earlier runs of the same suite and environment, so it can
+show trends - is the pass rate going down, which tests are flaky again and again.
 
 
 12. Rules we keep

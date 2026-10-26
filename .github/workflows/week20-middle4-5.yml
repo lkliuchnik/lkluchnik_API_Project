@@ -5,7 +5,15 @@ name: API tests — Week 20 (Middle Stage 4-5)
 #   push to main           regression   every test except the slow ones - main must stay green
 #   every night            full         everything, also the 1-minute token test (@slow)
 #   by hand                any suite    Actions > this workflow > Run workflow > choose the suite
-# The API + UI test (@ui) runs in its own job, for regression and full only.
+#
+# The jobs, in the order they run:
+#   checks    types, tags, and the plan of the run (which suite, which parts) - nothing else
+#             starts if this fails
+#   test      the API tests: one job per environment, and for regression/full the dev part is
+#             split into 2 shards that run at the same time (parallelization)
+#   ui-test   the API + UI test, for regression and full only
+#   report    one per environment: merges all parts into one HTML report, one JSON file and
+#             one Allure report (with history), and writes the numbers into the run Summary
 on:
   pull_request:
     branches: [main]
@@ -41,18 +49,18 @@ env:
   # the suite of this run, from the event that started it
   SUITE: ${{ github.event_name == 'pull_request' && 'smoke' || github.event_name == 'schedule' && 'full' || inputs.suite || 'regression' }}
 
+defaults:
+  run:
+    working-directory: "Week20. Middle Stage 4-5"
+
 jobs:
-  test:
-    name: test (${{ matrix.environment }})
+  checks:
+    name: checks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false # one red environment does not stop the other
-      matrix:
-        environment: [dev, staging] # the same code, two environments (config/environments.ts)
-    defaults:
-      run:
-        working-directory: "Week20. Middle Stage 4-5"
+    timeout-minutes: 10
+    outputs:
+      suite: ${{ steps.plan.outputs.suite }}
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,7 +69,8 @@ jobs:
           cache: npm
           cache-dependency-path: "Week20. Middle Stage 4-5/package-lock.json"
       - run: npm ci
-      - run: npx tsc --noEmit
+      - name: Types
+        run: npx tsc --noEmit
       - name: Every test is in a suite
         # a test without Tag.REGRESSION or Tag.SLOW would silently miss the regression suite
         run: |
@@ -71,12 +80,42 @@ jobs:
             echo "$untagged"
             exit 1
           fi
-      - name: Suite
-        run: echo "Suite **${SUITE}** (event ${{ github.event_name }}), environment **${{ matrix.environment }}**" >> "$GITHUB_STEP_SUMMARY"
+      - name: Plan the run
+        id: plan
+        # smoke is small: one job per environment. regression and full: the dev part is split
+        # into 2 shards that run in parallel; staging stays in one job (fewer parallel requests
+        # to the public servers).
+        run: |
+          if [ "$SUITE" = "smoke" ]; then
+            matrix='{"include":[{"environment":"dev","shardIndex":1,"shardTotal":1},{"environment":"staging","shardIndex":1,"shardTotal":1}]}'
+          else
+            matrix='{"include":[{"environment":"dev","shardIndex":1,"shardTotal":2},{"environment":"dev","shardIndex":2,"shardTotal":2},{"environment":"staging","shardIndex":1,"shardTotal":1}]}'
+          fi
+          echo "suite=$SUITE" >> "$GITHUB_OUTPUT"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "## Suite: $SUITE (event ${{ github.event_name }})" >> "$GITHUB_STEP_SUMMARY"
+
+  test:
+    name: test (${{ matrix.environment }} ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false # one red part does not stop the others
+      matrix: ${{ fromJSON(needs.checks.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: "Week20. Middle Stage 4-5/package-lock.json"
+      - run: npm ci
       - name: API tests
-        run: npm run "test:${SUITE}" -- --grep-invert @ui # the UI test has its own job
+        run: npm run "test:${SUITE}" -- --grep-invert @ui --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
         env:
           TEST_ENV: ${{ matrix.environment }}
+          REPORT_PART: ${{ matrix.environment }}-${{ matrix.shardIndex }} # the name of this part's raw report
           # secrets: never in the code or in this file (config/environments.ts reads them).
           # Each environment gets only its own password.
           DUMMYJSON_PASSWORD_DEV: ${{ matrix.environment == 'dev' && secrets.DUMMYJSON_PASSWORD_DEV || '' }}
@@ -84,21 +123,25 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report-week20-${{ env.SUITE }}-${{ matrix.environment }}
-          path: "Week20. Middle Stage 4-5/playwright-report/"
-          retention-days: 14
+          name: blob-report-${{ matrix.environment }}-${{ matrix.shardIndex }}
+          path: "Week20. Middle Stage 4-5/blob-report/"
+          retention-days: 3 # raw parts; the merged reports are kept longer
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-${{ matrix.environment }}-${{ matrix.shardIndex }}
+          path: "Week20. Middle Stage 4-5/allure-results/"
+          retention-days: 3
 
   # The API + UI test needs a browser and depends on the demoqa.com web page, which is slower
   # and less stable than the APIs. A separate job keeps a UI problem from hiding API results.
   # Not for smoke: a pull request gets quick API feedback only.
   ui-test:
     name: ui-test (dev)
-    if: github.event_name != 'pull_request' && inputs.suite != 'smoke'
+    needs: checks
+    if: needs.checks.outputs.suite != 'smoke'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: "Week20. Middle Stage 4-5"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -111,9 +154,114 @@ jobs:
       - run: npx playwright test --grep @ui
         env:
           TEST_ENV: dev # no secrets: the UI test uses DemoQA only
+          REPORT_PART: dev-ui
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report-week20-ui
+          name: blob-report-dev-ui
+          path: "Week20. Middle Stage 4-5/blob-report/"
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-dev-ui
+          path: "Week20. Middle Stage 4-5/allure-results/"
+          retention-days: 3
+
+  report:
+    name: report (${{ matrix.environment }})
+    needs: [checks, test, ui-test]
+    # also after red or skipped test jobs - a failed run needs its report most of all;
+    # not after a cancelled run (a newer push replaced it)
+    if: ${{ !cancelled() && needs.checks.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev, staging]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: "Week20. Middle Stage 4-5/package-lock.json"
+      - run: npm ci
+      - name: Download the raw reports of all parts
+        uses: actions/download-artifact@v4
+        continue-on-error: true # a missing part is counted in the next step
+        with:
+          pattern: blob-report-${{ matrix.environment }}-*
+          path: "Week20. Middle Stage 4-5/all-blob-reports"
+          merge-multiple: true
+      - name: Download the Allure results of all parts
+        uses: actions/download-artifact@v4
+        continue-on-error: true # a missing part is counted in the next step
+        with:
+          pattern: allure-results-${{ matrix.environment }}-*
+          path: "Week20. Middle Stage 4-5/allure-results"
+          merge-multiple: true
+      - name: Did all parts finish?
+        # a part (a shard or the UI job) that stopped early leaves no raw report; the numbers
+        # of this run are then incomplete, and the summary says so
+        id: parts
+        run: |
+          found=$(ls all-blob-reports/*.zip 2>/dev/null | wc -l)
+          expected=$(node -e "
+            const plan = JSON.parse(process.env.PLAN).include.filter((p) => p.environment === process.env.ENVIRONMENT);
+            const ui = process.env.ENVIRONMENT === 'dev' && process.env.SUITE !== 'smoke' ? 1 : 0;
+            console.log(plan.length + ui);")
+          echo "found=$found" >> "$GITHUB_OUTPUT"
+          echo "expected=$expected" >> "$GITHUB_OUTPUT"
+          echo "parts finished: $found of $expected"
+        env:
+          PLAN: ${{ needs.checks.outputs.matrix }}
+          ENVIRONMENT: ${{ matrix.environment }}
+      - name: HTML and JSON report
+        if: ${{ steps.parts.outputs.found != '0' }}
+        run: npx playwright merge-reports --config merge.config.ts all-blob-reports
+      - name: Restore the Allure history
+        if: ${{ !cancelled() && steps.parts.outputs.found != '0' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: "Week20. Middle Stage 4-5/allure-history"
+          key: allure-history-week20-${{ env.SUITE }}-${{ matrix.environment }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: allure-history-week20-${{ env.SUITE }}-${{ matrix.environment }}-
+      - name: Allure report
+        if: ${{ !cancelled() && steps.parts.outputs.found != '0' }}
+        run: npx allure generate allure-results
+        env:
+          ALLURE_REPORT_NAME: Week 20 - ${{ env.SUITE }} - ${{ matrix.environment }}
+          # the trend gets one point per complete run: not for a run with missing parts, not
+          # for a re-run (its first attempt is already in the history)
+          ALLURE_APPEND_HISTORY: ${{ steps.parts.outputs.found == steps.parts.outputs.expected && github.run_attempt == 1 }}
+      - name: Save the Allure history
+        if: ${{ !cancelled() && steps.parts.outputs.found == steps.parts.outputs.expected && github.run_attempt == 1 }}
+        uses: actions/cache/save@v4
+        with:
+          path: "Week20. Middle Stage 4-5/allure-history"
+          key: allure-history-week20-${{ env.SUITE }}-${{ matrix.environment }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Numbers into the run Summary
+        if: ${{ !cancelled() }}
+        run: >-
+          node scripts/ci-summary.js reports/results.json "$SUITE" ${{ matrix.environment }}
+          ${{ steps.parts.outputs.found }} ${{ steps.parts.outputs.expected }} >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-week20-${{ env.SUITE }}-${{ matrix.environment }}
           path: "Week20. Middle Stage 4-5/playwright-report/"
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: allure-report-week20-${{ env.SUITE }}-${{ matrix.environment }}
+          path: "Week20. Middle Stage 4-5/allure-report/"
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: results-json-week20-${{ env.SUITE }}-${{ matrix.environment }}
+          path: "Week20. Middle Stage 4-5/reports/results.json"
           retention-days: 14

@@ -12,6 +12,7 @@ In short
 - Stage 5 is done in a branch (week20-middle-stage-5) with a pull request, so that the
   "smoke on pull request" trigger really runs. Every step is reviewed before its commit.
 - Step 1 (tags, CI suites, secrets): 8 findings - 7 fixed, 1 left on purpose.
+- Step 2 (reports, job order, shards, numbers): 9 findings - 8 fixed, 1 left on purpose.
 
 
 Contents
@@ -19,6 +20,7 @@ Contents
 
    1. How a review is done here
    2. Step 1 - tags, CI suites and secrets (26 October 2026)
+   3. Step 2 - reports, job order, shards and numbers (26 October 2026)
 
 
 1. How a review is done here
@@ -122,3 +124,85 @@ How it was checked after the fixes
    - The whole regression suite in dev in CI mode, after the fixes: 152 of 152 as
      expected, 0 flaky, no leaked data (137 s). (The UI test is the 153rd - it runs in
      its own job.)
+
+
+3. Step 2 - reports, job order, shards and numbers (26 October 2026)
+--------------------------------------------------------------------
+
+What the step changed, in plain words: a CI run is now four groups of jobs in a row -
+"checks" (is the code fine, which tests to run), "test" (the tests, the dev part split in
+two halves that run at the same time), "ui-test", and "report" (glues the halves together
+and makes the HTML report, the Allure report with charts of earlier runs, a JSON file, and
+a small table of numbers on the run's Summary page).
+
+Most findings were about one thing: what the "report" job does when something went wrong
+earlier. That is exactly when a report is needed most, so it had to be solid.
+
+S2-1. One missing half meant no report at all
+   Found:     if one test job stopped early (a timeout, a broken install), it left no raw
+              results. The report job then failed at its first step, and everything after
+              it - the Allure report, the numbers, the downloads - was skipped.
+   Decision:  fixed. The report job first counts how many parts arrived. It builds the
+              reports from what is there, and the steps after that run even if one step
+              failed. Downloading a missing part no longer stops the job.
+
+S2-2. A missing half looked like a good run
+   Found:     with one half missing, the table would show only the tests of the other
+              half - for example 40 tests, 0 failed, 100% - and look perfectly fine.
+   Decision:  fixed. The report job knows how many parts were planned (from the plan the
+              "checks" job made). If fewer arrived, the Summary starts with "WARNING: only
+              1 of 3 parts of this run finished - the numbers below are incomplete."
+
+S2-3. A cancelled run still made reports
+   Found:     when a newer push to the pull request cancels an older run, the report jobs
+              of the old run still started and could even save a half-finished run into
+              the Allure history.
+   Decision:  fixed. The report job runs after failures, but not after a cancelled run.
+
+S2-4. "1 min 60 s"
+   Found:     minutes and seconds were rounded separately, so 119.6 seconds became
+              "1 min 60 s".
+   Decision:  fixed. The total is rounded first, then split: "2 min 0 s".
+
+S2-5. A flaky test lowered the pass rate
+   Found:     a test that failed once and passed on the retry ended green, but the pass
+              rate still counted it as not passed - a green run showed 95%.
+   Decision:  fixed. The pass rate is now "the share of tests that ended green"; flaky
+              tests have their own column, so they are still visible. If every test was
+              skipped, the rate shows "n/a" instead of 0%.
+
+S2-6. A re-run counted twice in the history
+   Found:     if the report job was started again ("Re-run failed jobs"), the same run
+              would be added to the Allure history a second time.
+   Decision:  fixed. Only the first attempt of a run adds its point to the history.
+
+S2-7. The staging report waits for the browser test
+   Found:     the report job for staging also waits for the browser test, which only
+              belongs to dev - up to a minute or two longer. And the list of environments
+              in the report job is written by hand, next to the plan.
+   Decision:  not changed. Splitting the report job in two would make the workflow
+              harder to read for a minute of waiting, and the run is not finished before
+              the browser test anyway. We have two environments; if a third one comes, the
+              list is one line to change.
+
+S2-8. Incomplete runs went into the trend
+   Found:     a run with a missing part was saved into the history like a normal run, so
+              the pass-rate trend could drop for reasons that are not test failures.
+   Decision:  fixed. A run adds a point to the history only when all its parts arrived.
+              (The history file itself is tiny; GitHub removes cache entries nobody used
+              for 7 days.)
+
+S2-9. The suite name came from two places
+   Found:     the report job read the suite name from the "checks" job and also had it
+              from the workflow - two sources that could one day disagree.
+   Decision:  fixed. The report job uses the one from the workflow, like the other jobs.
+
+How it was checked
+   - Locally, the CI way: smoke in two halves, plus the browser test, glued into one
+     report (7 tests); a test.fail test counted as a "known deviation", not a failure;
+     a missing results file and a missing part produce the warning instead of a crash.
+   - Allure: the results of both halves are kept; the history grows by one line per
+     report, and does not grow when appending is switched off.
+   - tsc clean, the workflow file parsed without errors.
+   - The real check is the first CI run of this step: every job group and every download
+     on one page.

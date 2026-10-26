@@ -8,13 +8,16 @@
     "test:smoke": "playwright test --grep @smoke",
     "test:regression": "playwright test --grep @regression",
     "test:full": "playwright test",
-    "test:report": "playwright show-report"
+    "test:report": "playwright show-report",
+    "allure:report": "allure generate allure-results --open"
   },
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/node": "^22.20.3",
+    "allure": "3.20.1",
+    "allure-playwright": "3.13.0",
     "dotenv": "^18.0.3",
     "typescript": "^7.0.2"
   }
