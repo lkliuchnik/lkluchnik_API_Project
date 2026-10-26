@@ -1,0 +1,11 @@
+{
+  "$id": "bookstore/account",
+  "description": "GET /Account/v1/User/{userId} - a reader's account with the books in the collection. New fields are allowed.",
+  "type": "object",
+  "required": ["userId", "username", "books"],
+  "properties": {
+    "userId": { "type": "string", "format": "uuid" },
+    "username": { "type": "string", "minLength": 1 },
+    "books": { "type": "array", "items": { "$ref": "book" } }
+  }
+}

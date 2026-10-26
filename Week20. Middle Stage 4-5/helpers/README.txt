@@ -105,6 +105,11 @@ Shared by all APIs
    fixtures/base.fixture.ts    env and the request log
    config/tags.ts              the suite tags (smoke, regression, slow, ui)
 
+Schemas (what an answer looks like - helpers/schema-changes.txt)
+   schemas/petstore/swagger.json   a pinned copy of the PetStore's own contract
+   schemas/dummyjson/, bookstore/  our practical schemas, one JSON file per answer
+   assertions/schemaAssertions.ts  expectSchema(body, 'dummyjson/cart') - the check
+
 Reports (used by CI)
    merge.config.ts             how CI glues the parts of a run into one HTML report and
                                one JSON file

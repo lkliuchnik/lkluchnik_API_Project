@@ -2,16 +2,16 @@ What the tests check, and where the APIs are wrong
 ==================================================
 
 What this file is for: it explains the checks in the tests - which rules they protect,
-why some checks are written the way they are - and lists the 37 places where an API does
+why some checks are written the way they are - and lists the 38 places where an API does
 not do what it should. The spec files point here with "see assertion-notes.txt".
 
 
 In short
 --------
 
-- 166 tests: 129 pass normally, 37 are marked test.fail (known API deviations).
-- The 37 deviations: 8 in DummyJSON, 16 in DemoQA Book Store, 13 in PetStore.
-  8 of them are older (weeks 18-19), 28 were found in Middle Stage 4, 1 in Middle Stage 5.
+- 180 tests: 142 pass normally, 38 are marked test.fail (known API deviations).
+- The 38 deviations: 9 in DummyJSON, 16 in DemoQA Book Store, 13 in PetStore.
+  8 of them are older (weeks 18-19), 28 were found in Middle Stage 4, 2 in Middle Stage 5.
 - A test.fail test still checks exactly what a correct API should do. It is marked because
   the real API answers differently. No check was changed to make a test green.
 - The 36 of Stage 4 failed at the same check, with the same expected value, in three runs
@@ -24,7 +24,7 @@ Contents
 --------
 
    1. The main rule
-   2. Known deviations - DummyJSON (1-8)
+   2. Known deviations - DummyJSON (1-8, 38)
    3. Known deviations - DemoQA Book Store (9-23, 37)
    4. Known deviations - PetStore (24-36)
    5. Seen by hand, not written as a test
@@ -58,8 +58,8 @@ How each deviation below is written:
    Note:   only when something extra is worth knowing
 
 
-2. Known deviations - DummyJSON (1-8)
--------------------------------------
+2. Known deviations - DummyJSON (1-8, 38)
+-----------------------------------------
 
 DummyJSON is a demo API: it answers a create, change or delete as if it worked, but it
 saves nothing. Deviations 1-5 are known since week 18.
@@ -121,6 +121,16 @@ saves nothing. Deviations 1-5 are known since week 18.
    Rule:   every error of an API has the same shape. For DummyJSON that is JSON
            { "message": "..." }.
    API:    404 with an HTML page. Every real endpoint answers with { message }.
+
+
+38. The profile sends the password back (found in Middle Stage 5)
+   Test:   dummyjson/schemas.spec.ts "GET /auth/me never sends the password back"
+   Rule:   an answer about the logged-in user never contains the user's password. The
+           schema "dummyjson/user-without-secrets" says so.
+   API:    GET /auth/me answers the whole user record - with "password" in plain text.
+   Note:   found by schema validation, not by a value test: no test read that field
+           before. The report says "/password: must NOT be valid". The same kind of
+           defect as 10 (DemoQA). See helpers/schema-changes.txt.
 
 
 3. Known deviations - DemoQA Book Store (9-23, 37)

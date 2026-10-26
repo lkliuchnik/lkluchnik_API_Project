@@ -1,0 +1,27 @@
+{
+  "$id": "dummyjson/products-page",
+  "description": "GET /products - one page of the catalog. The paging numbers and, for every product, the fields the tests and a shop would rely on. New fields are allowed.",
+  "type": "object",
+  "required": ["products", "total", "skip", "limit"],
+  "properties": {
+    "total": { "type": "integer", "minimum": 0 },
+    "skip": { "type": "integer", "minimum": 0 },
+    "limit": { "type": "integer", "minimum": 0 },
+    "products": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "description", "category", "price", "stock"],
+        "properties": {
+          "id": { "type": "integer" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "category": { "type": "string" },
+          "price": { "type": "number", "minimum": 0 },
+          "discountPercentage": { "type": "number", "minimum": 0, "maximum": 100 },
+          "stock": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

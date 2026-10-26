@@ -4,6 +4,7 @@ import { createApiClient } from '../api/createApiClient';
 import { PetService } from '../services/petstore/PetService';
 import { PetStoreUserService } from '../services/petstore/PetStoreUserService';
 import { StoreService } from '../services/petstore/StoreService';
+import { SwaggerService } from '../services/petstore/SwaggerService';
 import { Pet } from '../models/petstore/pet';
 import { buildPet } from '../test-data/petstore/petFactory';
 import { HttpStatus } from '../test-data/httpStatus';
@@ -14,6 +15,7 @@ function servicesFor(client: ApiClient) {
     pets: new PetService(client),
     users: new PetStoreUserService(client),
     store: new StoreService(client),
+    swagger: new SwaggerService(client),
   };
 }
 

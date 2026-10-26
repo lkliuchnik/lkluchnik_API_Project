@@ -1,0 +1,13 @@
+{
+  "$id": "bookstore/books",
+  "description": "GET /BookStore/v1/Books - the catalog: every book with the details the reader sees. New fields are allowed.",
+  "type": "object",
+  "required": ["books"],
+  "properties": {
+    "books": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "book" }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "$id": "bookstore/created-account",
+  "description": "POST /Account/v1/User - a new account: its id (spelled userID here, userId elsewhere), the name, and an empty collection. New fields are allowed.",
+  "type": "object",
+  "required": ["userID", "username", "books"],
+  "properties": {
+    "userID": { "type": "string", "format": "uuid" },
+    "username": { "type": "string", "minLength": 1 },
+    "books": { "type": "array", "maxItems": 0 }
+  }
+}

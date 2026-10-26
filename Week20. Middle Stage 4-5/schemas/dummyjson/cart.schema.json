@@ -1,0 +1,30 @@
+{
+  "$id": "dummyjson/cart",
+  "description": "POST /carts/add - a new cart with its lines and totals: the money fields the cart business rules are checked on. New fields are allowed. Note: here a line has 'discountedPrice'; GET /carts/{id} calls the same value 'discountedTotal' (helpers/schema-changes.txt).",
+  "type": "object",
+  "required": ["id", "userId", "products", "total", "discountedTotal", "totalProducts", "totalQuantity"],
+  "properties": {
+    "id": { "type": "integer" },
+    "userId": { "type": "integer" },
+    "total": { "type": "number", "minimum": 0 },
+    "discountedTotal": { "type": "number", "minimum": 0 },
+    "totalProducts": { "type": "integer", "minimum": 0 },
+    "totalQuantity": { "type": "integer", "minimum": 0 },
+    "products": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "price", "quantity", "total", "discountPercentage", "discountedPrice"],
+        "properties": {
+          "id": { "type": "integer" },
+          "title": { "type": "string" },
+          "price": { "type": "number", "minimum": 0 },
+          "quantity": { "type": "integer", "minimum": 1 },
+          "total": { "type": "number", "minimum": 0 },
+          "discountPercentage": { "type": "number", "minimum": 0, "maximum": 100 },
+          "discountedPrice": { "type": "number", "minimum": 0 }
+        }
+      }
+    }
+  }
+}
