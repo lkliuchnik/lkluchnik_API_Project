@@ -620,9 +620,16 @@ CI metrics (flakiness, pass rate trends)
    the run Summary: passed, known deviations, failed, flaky, skipped, pass rate, time,
    and the names of the failed and flaky tests (scripts/ci-summary.js); the trends: the
    Allure history of the last 30 runs per suite and environment
+   Screenshots: screenshots/ci-full-run-29-summary.png (the table),
+   allure-regression-run-22-status-dynamics.png (the trend: four regression runs with
+   153, 153, 165 and 179 tests - the jumps are the password table and the schema checks;
+   run #15 is not in it, its browser part was missing, so it did not count),
+   allure-regression-run-22-overview.png (flaky tests: none, retried tests: none, new
+   tests: 14)
 
 Allure or similar reporting integration
-   Allure 3 (allurerc.mjs, allure-playwright), next to Playwright's HTML report
+   Allure 3 (allurerc.mjs, allure-playwright), next to Playwright's HTML report; the
+   Allure report of run #22, opened locally: the two screenshots above
 
 
 Practice task 1. "Create a data-driven test suite with 8-12 parameterized cases"
@@ -671,7 +678,8 @@ similar)"
 Where:    .github/workflows/week20-middle4-5.yml (GitHub Actions)
 Runs:     smoke on every pull request to main, regression on every push to main, full
           every night at 02:00 UTC, any suite by hand
-Proof:    green runs #10, #12, #13, #17, #20, #22, #25 (links at the end of this part)
+Proof:    green runs #10, #12, #13, #17, #20, #22, #25, #29 (links at the end of this
+          part)
 
 
 Practice task 4. "Set up environment-based configuration (CI vs local)"
@@ -829,7 +837,9 @@ expected vs when it signals a risk"
 
 "Understand test organization for CI efficiency (smoke on PR, full nightly)"
    ci-strategy.txt - smoke on a pull request, regression on main, full every night, and
-   why; ci-improvements.txt - what made the runs faster.
+   why; ci-improvements.txt - what made the runs faster. Smoke ran on every push to the
+   pull request; the full suite ran by hand on the branch (run #29), because night runs
+   start only from main, after the merge.
 
 "Distinguishes between infrastructure, environment, and test failures"
    failure-classification.txt - one real CI case of each kind.
@@ -889,7 +899,9 @@ On the branch week20-middle-stage-5 (pull request #1 to main):
    review of that fix (code-review-stage-5/07-ai-triage-agent.txt).
 10. "CI strategy, CI suggestions and the Stage 5 test plan."
    ci-strategy.txt, the CI suggestions, this part of the test plan (with practice tasks
-   10-14).
+   10-14).   (a2b96a6)
+11. "Full run and Allure trend screenshots."
+   The evidence of the full suite (run #29) and of the Allure trend, before the merge.
 
 Every commit name starts with "Week 20. Middle Stage 5.".
 
@@ -941,3 +953,10 @@ Run #24 - smoke, red on purpose, test (a wrong expected status)
 
 Run #25 - smoke, green after the mistake was taken back
    Screenshot: screenshots/ci-pr-run-25-after-revert.png
+
+Run #29 - full by hand on the branch (commit a2b96a6), green, 6 min 38 s
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40472160830
+   All 7 jobs green, 14 artifacts. full-dev: 180 tests (142 passed + 38 known
+   deviations) in 4 min 31 s - with the 1-minute token test and the browser test;
+   full-staging: 179 (no browser test) in 5 min 40 s. 0 failed, 0 flaky, pass rate 100%.
+   Screenshots: screenshots/ci-full-run-29.png, ci-full-run-29-summary.png

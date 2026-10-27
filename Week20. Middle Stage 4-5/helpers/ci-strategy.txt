@@ -54,6 +54,8 @@ Every night - full (everything)
    change we do not cause ourselves - a public API changing its answers - is seen within
    a day. GitHub starts night runs only from the workflow file on main, so they begin
    after this branch is merged.
+   The same suite, started by hand on the branch before the merge: run #29, green in
+   6 min 38 s - 180 tests in dev, 179 in staging (screenshots/ci-full-run-29.png).
 
 By hand - any suite
    Actions > this workflow > Run workflow, choose the suite. We used it to run regression
@@ -133,7 +135,8 @@ deviations, failed, flaky, skipped, the pass rate and the time, and the names of
 failed and flaky tests. The Allure report keeps the last 30 runs of the same suite and
 environment, so it shows trends: is the pass rate going down, is the same test flaky
 again and again.
-Evidence: reports/2026-10-26-ci-reports-and-shards.txt
+Evidence: reports/2026-10-26-ci-reports-and-shards.txt; the trend of four regression runs
+in the Allure report of run #22: screenshots/allure-regression-run-22-status-dynamics.png
 
 
 When a run is red
