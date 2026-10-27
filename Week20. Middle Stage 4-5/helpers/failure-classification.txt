@@ -144,8 +144,8 @@ Case 2 - environment (CI) - run #15, 26 October 2026
 Case 3 - infrastructure (CI) - the first smoke run of Stage 5, 26 October 2026
    https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40297804152
    What we saw: smoke red in both environments; only the DemoQA test failed, with "Test
-   timeout of 60000ms exceeded"; every DemoQA request took 3 to 14 seconds. DummyJSON and
-   PetStore passed. DemoQA was just as slow from a local computer.
+   timeout of 60000ms exceeded"; every DemoQA request took about 1 to 14 seconds.
+   DummyJSON and PetStore passed. DemoQA was just as slow from a local computer.
    The kind: infrastructure - a very slow public server.
    What we changed anyway: the DemoQA smoke test became much shorter (3 requests).
    More: reports/2026-10-26-ci-smoke-demoqa-slow.txt

@@ -1,0 +1,99 @@
+ci-triage v1 - case A (the first smoke run, 40297804152) - the agent's answer, unchanged
+Agent run: 216 s, 22 tool calls, about 81 000 tokens
+
+## Why the run failed
+
+DemoQA (demoqa.com) was very slow during this run, and the smoke test hit the 60 s test
+timeout before it could finish. The test code and the API are fine: every assertion that
+ran passed. This is an environment problem with an external dependency, made worse by a
+test design choice: a long DemoQA flow of 12 requests was tagged @smoke.
+
+What failed: one test, bookstore/readerJourney.spec.ts > "a reader opens an account,
+builds and changes a collection, then closes the account" (tags @regression, @smoke). It
+failed in both matrix jobs (dev and staging) and on both attempts (first try and retry).
+The other 5 smoke tests passed. The PetStore, DummyJSON and jobs tests answered in
+2-200 ms.
+
+Evidence (from the HTML reports; I extracted the report data embedded in index.html):
+- Error: Test timeout of 60000ms exceeded.
+- Every DemoQA request took between 0.9 s and 14.4 s. From the dev api-log, first attempt:
+  - GET /BookStore/v1/Books took 6733 ms
+  - POST /Account/v1/User took 6057 ms
+  - POST /Account/v1/GenerateToken took 7950 ms
+  - POST /BookStore/v1/Books took 9875 ms
+  - DELETE /Account/v1/User/... took 12708 ms
+  - and so on
+- The test makes about 11 DemoQA requests one after another, including the catalog
+  fixture. At these speeds that adds up to about 69 s. The config comment in
+  playwright.config.ts expects 5-25 s.
+- Timeline of dev, first attempt: the fixtures took 6.8 s and steps 1-7 took 49.7 s.
+  Step 8 (DELETE account) started at about 56.5 s. The 60 s timeout fired while that
+  request was still running, and the DELETE answered 204 at about 69 s. The other three
+  attempts look the same (total durations 73-75 s).
+- Steps 1-7 passed with correct data on all four attempts. Step 8's DELETE also got its
+  204.
+
+## Errors in the report that only follow from the timeout (don't chase these)
+
+1. POST /Account/v1/GenerateToken - no response from the server: Request context disposed
+   (step 9, readerJourney.spec.ts:77). When the timeout fired, Playwright started teardown
+   and disposed the request context. The test body kept running in the background and its
+   next request was cut off. This happens after the timeout, not before it.
+
+2. leaked data annotation: undefined: ... login as qa_... failed: 200 User authorization
+   failed.; with the password: DELETE answered 200. This is a false alarm. Nothing leaked.
+   - Teardown of accountCleanup started while step 8's DELETE was still running, so
+     forget(userId) had not been called yet. The cleanup therefore tried to close the
+     account a second time.
+   - By then step 8 had already deleted the account (204). So the cleanup login failed,
+     and the second DELETE got DemoQA's 200 for an account that no longer exists.
+   - The undefined in the annotation is a small real bug in fixtures/bookstore.fixture.ts.
+     The leak report looks up [...accounts.keys()][i] after the await. Meanwhile the
+     still-running test body called forget() and emptied the map.
+   - This bug is still in the current code (line 134). The fix is to take a snapshot
+     before the await:
+        const entries = [...accounts.entries()];
+        const results = await Promise.allSettled(entries.map(async ([, { account,
+          session }]) => { ... }));
+        results.forEach((result, i) => { const userId = entries[i][0]; ... });
+
+## Classification
+
+- Kind: environment / external dependency (slow DemoQA). It is not a product bug or a
+  test logic bug.
+- Flaky? No. It failed the same way on both attempts in both environments, so a re-run
+  during the slow period would not help.
+- Retry interceptor: irrelevant here. Nothing returned 5xx and no request hit its own
+  per-request timeout (30 s for DemoQA). The requests were just slow.
+
+## How to fix
+
+1. Main fix: keep @smoke small.
+   - The smoke suite on a pull request should be "is the API up and wired", with as few
+     requests as possible.
+   - Remove Tag.SMOKE from readerJourney.spec.ts and keep it as @regression only.
+   - Mark a short DemoQA happy path as smoke instead, for example open and close one
+     account (3 requests).
+   - This is already done in the repository: commit 88f2f92 "Lighter DemoQA smoke test
+     after a slow CI run" moved @smoke to accountBoundaries.spec.ts > "the minimum: 8
+     characters are accepted". The next commit, 3b8c4b5, is titled "Green smoke run on the
+     pull request". The failed run was on bc4bc6d, the commit before that fix. So no action
+     is needed for the smoke failure itself.
+2. The long journey can still time out in regression on a slow DemoQA day. Options:
+   - give that test its own budget with test.setTimeout(...) or test.slow(), rather than
+     raising the global 60 s;
+   - or accept that it fails, and classify it as an environment failure when the api-log
+     shows multi-second DemoQA responses.
+3. Optional: fix the undefined userId in the leak annotation as shown above. The current
+   fixture already re-checks whether the account still exists before it reports "leaked
+   data", which stops this false alarm.
+
+## Files
+
+- Artifacts: run-first-smoke\playwright-report-week20-smoke-dev\index.html and
+  ...-smoke-staging\index.html
+- Extracted report data (temporary, in the scratchpad)
+- Code: tests\bookstore\readerJourney.spec.ts, fixtures\bookstore.fixture.ts,
+  playwright.config.ts, config\tags.ts
+
+I made no changes to the repository.

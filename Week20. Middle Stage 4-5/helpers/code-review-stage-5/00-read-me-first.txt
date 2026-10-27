@@ -19,6 +19,9 @@ In short
   our own that the checks themselves caught before the review.
 - Step 5 (failure classification): 10 findings - 7 fixed, 3 kept on purpose and written
   down.
+- Step 6 (the AI triage agent): the one code change - a bug the agent itself found in the
+  account cleanup. 7 findings - 2 fixed (one of them an older gap next to the bug), 5 need
+  no change.
 
 
 The files
@@ -33,6 +36,8 @@ The files
                                         (S4-1 ... S4-10)
    05-schema-validation.txt             step 4 - schema validation (S5-1 ... S5-8)
    06-failure-classification.txt        step 5 - failure classification (S6-1 ... S6-10)
+   07-ai-triage-agent.txt               step 6 - the AI triage agent, and the cleanup fix
+                                        it led to (S7-1 ... S7-7)
 
 The numbers (S2-5 and so on) stay the same in every file, so other documents can point to
 a finding by its number.

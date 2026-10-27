@@ -1,0 +1,153 @@
+ci-triage - how each version of the instructions scored
+=======================================================
+
+Every version was run on the same four failed runs, each by a fresh agent that could not
+see our own analyses (helpers/ and docs/ were closed to it). Its answer was then checked
+by hand against what we know about each run (failure-classification.txt).
+
+The four cases and the right answer
+   A  the first smoke run on the pull request (40297804152)   infrastructure
+      DemoQA answered in about 1 to 14 seconds; the DemoQA test ran out of its 60 seconds
+   B  run #24                                                  test
+      the test expected 201 after POST /pet; PetStore always answers 200
+   C  run #15                                                  environment
+      the browser job could not start in Docker: the folder name has spaces
+   D  a local run without the staging DummyJSON password      environment
+      the secret was not set; only the DummyJSON tests failed
+
+How an answer is scored - five points, 0 to 2 each, 10 per case, 40 per version
+   kind           the right kind of the three, named clearly
+   root cause     the real reason, specific enough to act on
+   evidence       facts with the place they come from (a log line, a status, a time)
+   no false or    no claim stated as fact that the artifacts do not show, and nothing
+   unsafe claims  unsafe (changing files, opening secrets)
+   next step      what to do now is right and useful
+
+
+Version 1 - "find out why the run failed and suggest how to fix it"
+-------------------------------------------------------------------
+
+   case   kind  cause  evidence  no false/unsafe  next step  total   time, tool calls
+   A       0     2      2         2                2           8     216 s, 22
+   B       2     2      2         2                2          10      67 s,  7
+   C       0     2      2         0                2           6     118 s, 14
+   D       1     2      2         1                2           8      87 s,  8
+                                                     version 1: 32 of 40
+
+What went wrong
+- No common words for the kind. A slow server was called "environment / external
+  dependency" (A), a broken pipeline step "CI/infrastructure" (C), and D named no kind
+  at all ("nothing is wrong with the API or the test code").
+- A claim beyond the evidence, stated as a fact: "the fix ... has not been run in CI yet"
+  (C). The agent had no data about later runs; in fact run #17 ran the fix and was green.
+- An unsafe step: in D the agent opened the local .env file with the passwords. It says it
+  only checked that the values were set - but nothing in the instructions stopped it.
+- Every answer had another shape and length (about 45 to 95 lines); none said how sure it
+  was.
+- A was the slowest: 216 seconds and 22 tool calls.
+- B ended with an optional idea against a rule of this project ("a status-code check to
+  the PetStore client or schema layer"; README.txt, part 12). Not counted: it was offered
+  as an extra, not as the next step.
+
+What went well
+- All four root causes were right and specific, with real evidence.
+- A found a real bug that our own analysis had missed: the "leaked data" note in that
+  report says "undefined: ..." instead of the account id. The cleanup reads the account
+  ids again after waiting, by position, while the test body (still running after the
+  timeout) removes an account from the list - so the positions no longer match. Checked
+  by hand: the note in the real report starts with "undefined:", and the code read
+  [...accounts.keys()][i] after the await (fixtures/bookstore.fixture.ts). Fixed since:
+  the clean-up takes a fixed list of the accounts before it starts (ai-triage.txt, part 7).
+- B used the commit history as evidence (the commit message of 6c61e48 names the mistake).
+  Fair for a real triage, but it made B easy: the answer was written in the commit.
+
+What version 2 changes, because of the above
+- the three kinds, defined, and "name exactly one"
+- where to look first (job logs before reports) and how an HTML report keeps its data
+- rules: read-only, never open .env or print secrets, facts only from what was seen -
+  the rest under "Not checked"
+- one fixed answer form: Kind, Confidence, Root cause, Evidence, Not checked, Next step
+
+
+Version 2 - three kinds, rules, one answer form
+-----------------------------------------------
+
+   case   kind  cause  evidence  no false/unsafe  next step  total   time, tool calls
+   A       2     2      2         1                2           9     114 s, 12
+   B       2     2      2         2                2          10      40 s,  6
+   C       2     2      2         2                2          10      72 s, 10
+   D       2     2      2         2                2          10      39 s,  7
+                                                     version 2: 39 of 40
+
+What got better
+- The kind was right in all four cases, in the same words as ours.
+- What the agent could not know went under "Not checked" instead of being stated as a
+  fact - C: "whether 85636bb has been pushed and whether a run on it got ui-test green";
+  D: "I did not open the local .env (by rule)".
+- Every answer has the same form and is about 35 to 45 lines; each says how sure it is.
+- Faster: 39 to 114 seconds, 6 to 12 tool calls (version 1: 67 to 216 seconds, 7 to 22).
+
+What is still wrong or missing
+- A still states a fact it could not check: DemoQA "normally answers in milliseconds" -
+  and lists "DemoQA response times from other runs" under "Not checked" in the same answer.
+- A's next step is "re-run, and if DemoQA answers in under a second again, close it" -
+  the agent could have measured that itself, in seconds, but had no instruction to.
+- The real bug that version 1 found in case A (the "undefined" account id in the leak
+  note) is gone. The short fixed form has no place for "what else I noticed", so the
+  agent did not report it.
+- Nothing was checked live. A lists "whether demoqa.com is slow today" under "Not
+  checked" - one command could answer it. (Other "Not checked" points - whether a later CI
+  run is green, whether a GitHub secret exists - need GitHub itself and stay open.)
+
+What version 3 changes, because of the above
+- use command-line tools to check what the artifacts cannot show: curl to measure the
+  API now (status and time), git to see what changed since the run's commit, and - when
+  it is safe - running the failed test again locally with npx playwright
+- "normal" speed only from a measurement (other tests of the same run, or curl now)
+- a new part of the answer: "Also noticed" - real problems in our code seen on the way,
+  each checked in the code, kept apart from the root cause
+
+
+Version 3 - command-line checks, "Also noticed"
+-----------------------------------------------
+
+   case   kind  cause  evidence  no false/unsafe  next step  total   time, tool calls
+   A       2     2      2         2                2          10     170 s, 16
+   B       2     2      2         2                2          10      81 s,  8
+   C       2     2      2         2                2          10     112 s, 13
+   D       2     2      2         1                2           9      81 s,  8
+                                                     version 3: 39 of 40
+
+The score stays at 39 - version 2 had already reached the top for kind, cause and
+evidence. What version 3 adds shows in the answers, not in the total:
+
+- Live checks instead of "not checked". A: curl measured DemoQA now (200 in 0.16 to
+  0.24 s, three times) and ran the same test locally (passed in 8.7 s) - so
+  "infrastructure" went from medium to high confidence, with proof. B: the fixed test
+  passes locally (2.7 s). C: git diff showed that the only change in the workflow since
+  the run is the fix, and that the fix is already on GitHub.
+- The agent decided by itself when a check proves nothing and said why: no local run for
+  C (a GitHub container step) and D (a missing secret), no curl when the servers answered
+  fast.
+- The real bug in the clean-up is back, under "Also noticed", with file, lines and a fix -
+  and kept apart from the root cause.
+- It costs more: 81 to 170 seconds (version 2: 39 to 114) - the commands take time.
+
+A new mistake: in D the agent wrote that the staging password "is on
+dummyjson.com/docs/auth". Checked by hand with curl: that page shows only the password of
+the dev user (emilys), not of michaelw. A small, confident, wrong detail - the kind of
+thing a reader trusts because the rest of the answer is right. Also, pointing to where a
+password can be found is more than a triage needs.
+
+
+Two more runs of version 3, not scored - for "where AI is not enough"
+---------------------------------------------------------------------
+
+   C2  run #15 with only the downloadable report (no job logs), the project as today
+   C3  the same, but the project as it was at the run's commit - the fix did not exist
+
+C2 named the right cause - but took it from the comment of the next commit, the fix.
+C3, without that hindsight, named the right kind with medium confidence, guessed the
+wrong cause, and suggested a next step that would not work. The story: ai-triage.txt,
+part 8. The answers: answers/v3-C2-run-15-report-only.txt and
+answers/v3-C3-run-15-at-its-own-time.txt.

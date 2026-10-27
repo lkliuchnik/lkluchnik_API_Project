@@ -1,0 +1,75 @@
+Code review - step 6: the AI triage agent
+=========================================
+
+One iteration of the Middle Stage 5 code review (27 October 2026). How a review is done,
+and the list of all iterations: 00-read-me-first.txt in this folder.
+
+
+What the step added, in plain words: the AI-tool agent ci-triage, which reads a red CI
+run and says whose problem it is (../ai-triage/ai-triage.txt). Most of the step is
+documents - the agent's instructions in three versions, its answers and their scores.
+Those were fact-checked separately (12 points corrected in the wording).
+
+The only code change came from the agent itself: it noticed that the "leaked data" note of
+the DemoQA account cleanup can name no account ("undefined: ...") or the wrong one, when a
+test runs out of time. The cleanup closes all accounts at the same time and then read their
+ids again, by position, while the test body - still running after the timeout - could
+remove an account from the list. The fix: the cleanup takes a fixed list of the accounts
+before it starts, and names each one from that list (fixtures/bookstore.fixture.ts) - the
+way the PetStore cleanup already did.
+
+The review looked at that change only.
+
+S7-1. Is the fix right?
+   Found:     the results of "all at the same time" come back in the order of the list,
+              not in the order the answers arrive - so result number i always belongs to
+              account number i of the fixed list. The accounts closed, and the order of the
+              requests, are the same as before; only the name in the note changed.
+   Decision:  kept.
+
+S7-2. The same mistake anywhere else?
+   Found:     no. The only other cleanup of this kind (PetStore) already uses a fixed list.
+   Decision:  nothing to change.
+
+S7-3. An account opened during the cleanup was silently left behind
+   Found:     older than the fix, and not covered by it. A test body that runs on after a
+              timeout can still open a new account while the cleanup is running (the
+              connection to the server is closed only after the cleanup). Such an account
+              is not in the fixed list: nobody closes it, and the report does not mention
+              it at all.
+   Example:   the reader story times out just while it opens its account - the account
+              stays on DemoQA, and the report looks clean.
+   Decision:  fixed. After closing the listed accounts, the cleanup looks for accounts that
+              were added meanwhile and marks each one as "leaked data: opened after the
+              cleanup had started - not closed". It does not try to close them: the test
+              body may still be using them, and a report that names them is what matters.
+              Checked with a temporary test that adds an account 0.3 s after the cleanup
+              starts: the note appeared, with the right id (the test was deleted after).
+
+S7-4. A test that deletes its own account during the cleanup
+   Found:     already handled: the cleanup then finds no clear "deleted", asks DemoQA,
+              learns the account is gone and writes a "cleanup note", not "leaked data".
+   Decision:  nothing to change.
+
+S7-5. "clean-up" in the new comment
+   Found:     the code of this file says "cleanup" everywhere else.
+   Decision:  fixed.
+
+S7-6. Style
+   Found:     line lengths, names and the form match the file and the PetStore cleanup.
+   Decision:  nothing to change.
+
+S7-7. An automatic test for the fix?
+   Found:     to recreate it, a test would need the cleanup to fail for real (DemoQA down,
+              or a mocked client) and a second action timed into the cleanup - slow, flaky
+              or mostly mocks.
+   Decision:  no test. The fix is a few lines that can be checked by reading them; the real
+              case is in the report of the first smoke run, the late account was checked
+              once by the temporary test above.
+
+
+How it was checked
+   - types (tsc) clean;
+   - all DemoQA API tests (tests/bookstore without the browser test), environment dev,
+     retries off: 61 of 61 as expected, after the first change and again after S7-3;
+   - the temporary test for S7-3, described there.

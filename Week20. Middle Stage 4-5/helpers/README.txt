@@ -293,7 +293,9 @@ From fixtures/bookstore.fixture.ts:
                       in), with the user name and password (Basic auth). If neither
                       way gives a clear "deleted", it asks DemoQA whether the account
                       still exists: gone = a "cleanup note", still there = "leaked data"
-                      with what both ways answered.
+                      with what both ways answered. An account opened while the cleanup
+                      already runs (a test body that ran on after a timeout) is not
+                      closed, but marked as "leaked data" too.
                       A test that opens an account itself calls remember(), and forget()
                       if it closed the account on its own.
 

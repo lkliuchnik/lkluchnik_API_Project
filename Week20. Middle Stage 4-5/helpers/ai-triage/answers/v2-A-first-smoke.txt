@@ -1,0 +1,43 @@
+ci-triage v2 - case A (the first smoke run, 40297804152) - the agent's answer, unchanged
+Agent run: 114 s, 12 tool calls, about 57 000 tokens
+
+Kind:         infrastructure
+Confidence:   medium. Every DemoQA answer had a correct status, but each one took several
+              seconds, and the test itself was a long serial flow. A slow server is the
+              cause, and the test design made it worse.
+Root cause:   demoqa.com answered every request in about 1-14 s when it normally answers in
+              milliseconds. The 12 serial requests of readerJourney.spec.ts went past the
+              60 s test timeout, so the test failed on both tries in dev and in staging.
+              All 5 other smoke tests passed in 56-3073 ms.
+Evidence:
+- playwright-report-week20-smoke-dev and -staging, index.html (embedded report.json):
+  stats are total 6, expected 5, unexpected 1, flaky 0 in each environment. The only
+  failure is bookstore/readerJourney.spec.ts, tagged @regression and @smoke. It timed out
+  on retry 0 and retry 1 (about 75 s and 74 s).
+- data/32e408...md (both reports): "Test timeout of 60000ms exceeded." Nothing else
+  failed: no assertion error and no 4xx or 5xx.
+- api-log attachment (dev, retry 0): every status is normal (200/201/204), but the
+  durations are GET Books 6733 ms, POST User 6057, GenerateToken 7950, POST Books 9875,
+  DELETE Book 7862, DELETE User 12708 ms. The requests before step 9 add up to about
+  69 s, more than the 60 s budget. Retry 1 and both staging tries look the same
+  (906-14413 ms per request).
+- The second error, in step 9 at readerJourney.spec.ts:74 / ApiClient.ts:96, says "POST
+  /Account/v1/GenerateToken - no response from the server: Request context disposed".
+  This is a result of the timeout: Playwright closed the request context while the
+  request was still waiting. The server did not refuse it.
+- Project code: playwright.config.ts has timeout 60_000 with the note "a DemoQA test
+  spends 5-25 s on opening and closing its account". config/environments.ts sets the
+  DemoQA timeoutMs to 30_000, and dev and staging use the same https://demoqa.com. That
+  explains why both environments failed in the same way.
+- Git: at the run's commit bc4bc6d this test had the tags [REGRESSION, SMOKE]. In the
+  working tree it has REGRESSION only (commit 88f2f92), so the current code no longer runs
+  it in smoke.
+Not checked:  the job logs (not in the artifacts); whether demoqa.com is slow today;
+              DemoQA response times from other runs, to tell a temporary slowdown from its
+              usual speed; whether the run is green after a re-run.
+Next step:    Re-run the failed jobs. If DemoQA answers in under a second again, mark the
+              run as an infrastructure slowdown and close it.
+              If it keeps taking seconds per request, keep this long journey out of smoke
+              (the current code already does that), or give it a larger timeout with
+              test.slow().
+              Check the next PR smoke run on the current code to confirm it is green.

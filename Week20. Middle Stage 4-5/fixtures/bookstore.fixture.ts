@@ -86,8 +86,12 @@ export const test = base.extend<BookStoreFixtures>({
       },
     });
 
+    // A fixed list: after a timeout the test body can still run and forget() an account
+    // while the cleanup waits - the results must still match the accounts by position.
+    // An account it remember()s meanwhile is not in this list - see the end of the hook.
+    const toClose = [...accounts.values()];
     const results = await Promise.allSettled(
-      [...accounts.values()].map(async ({ account, session }) => {
+      toClose.map(async ({ account, session }) => {
         let byToken: string; // what the token way gave, for the report if both ways fail
         try {
           const { status } = await bookStoreApi(request, env, apiLog, session).account.delete(account.userId);
@@ -131,10 +135,22 @@ export const test = base.extend<BookStoreFixtures>({
     );
     results.forEach((result, i) => {
       if (result.status === 'rejected') {
-        const userId = [...accounts.keys()][i];
+        const { userId } = toClose[i].account;
         testInfo.annotations.push({ type: 'leaked data', description: `${userId}: ${result.reason}` });
       }
     });
+
+    // Opened by a test body that ran on after a timeout, while the cleanup was running: not
+    // closed - but never silently missing from the report.
+    const listed = new Set(toClose.map(({ account }) => account.userId));
+    for (const userId of accounts.keys()) {
+      if (!listed.has(userId)) {
+        testInfo.annotations.push({
+          type: 'leaked data',
+          description: `${userId}: opened after the cleanup had started - not closed`,
+        });
+      }
+    }
   },
 
   // Seeded data that really exists on the server: new readers with empty collections.

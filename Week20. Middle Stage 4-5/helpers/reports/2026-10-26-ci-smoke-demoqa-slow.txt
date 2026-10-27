@@ -44,7 +44,7 @@ How we found the reason
 
 The CI log needs a GitHub login, so we downloaded the test reports of the run and read
 them. Every test in our project writes down each request it sends and how long the answer
-took. For the failed test, every answer from DemoQA took between 3 and 14 seconds.
+took. For the failed test, every answer from DemoQA took between about 1 and 14 seconds.
 For example:
 
    deleting an account        12.7 seconds

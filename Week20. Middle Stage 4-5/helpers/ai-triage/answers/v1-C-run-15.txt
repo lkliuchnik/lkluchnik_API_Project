@@ -1,0 +1,80 @@
+ci-triage v1 - case C (run #15) - the agent's answer, unchanged
+Agent run: 118 s, 14 tool calls, about 80 000 tokens
+
+## Run 15 triage: a CI configuration bug, not a test or product failure
+
+In short: None of the API tests failed. The run is red only because the ui-test (dev) job
+crashed on its first run step (npm ci) before any test could start. The cause is the
+workflow: the job runs inside a container and uses a working directory whose name has
+spaces. The fix is already on your branch in commit 85636bb, but it has not been run in
+CI yet.
+
+What the artifacts show
+   checks                          passed
+   test (dev 1/2)                  76 passed (4.5 min)
+   test (dev 2/2)                  76 passed (17 s)
+   test (staging 1/1)              152 passed (4.8 min)
+   ui-test (dev)                   failed in npm ci, exit code 1
+   report (dev), report (staging)  built normally
+- The ✘ lines in the test logs are not failures. They are tests marked as expected
+  failures, which is why Playwright reports "N passed" with no failed count.
+- results-json-week20-regression-dev/results.json agrees: expected 152, unexpected 0,
+  flaky 0.
+- report (dev) says parts finished: 2 of 3, so the dev report covers only the two API
+  shards. The UI part is missing.
+
+The failing step (5_ui-test (dev).txt)
+   ##[group]Run npm ci
+    shell: sh -e {0}
+   Error response from daemon: No such container: Middle
+   ##[error]Process completed with exit code 1.
+This error comes from Docker, not from npm, and npm ci never ran. Both upload steps
+afterwards warned "No files were found" for blob-report/ and allure-results/.
+
+Root cause
+- The run used commit 761189e, the version of .github/workflows/week20-middle4-5.yml that
+  first moved ui-test into container: mcr.microsoft.com/playwright:v1.63.0-noble.
+- That job used the workflow-wide default working-directory: "Week20. Middle Stage 4-5".
+- In a container job, GitHub Actions runs each step with docker exec -w <dir> <container>
+  ... and passes the directory without quotes. Docker therefore takes Week20. as the
+  directory and Middle as the container name.
+- The jobs that run straight on the runner (checks, test, report) are not affected, which
+  is why only ui-test broke.
+- Category: CI/infrastructure (workflow configuration). It is not a test defect, a product
+  bug or flakiness. Re-running this run will fail the same way, because the bug is in that
+  commit.
+
+Fix
+Commit 85636bb ("Browser test job: start outside the folder with spaces") on
+week20-middle-stage-5 already does the right thing. For the ui-test job only, it sets
+   defaults:
+     run:
+       working-directory: .
+and moves into the folder inside each step, with the name in quotes:
+   - run: cd "Week20. Middle Stage 4-5" && npm ci
+   - run: cd "Week20. Middle Stage 4-5" && npx playwright test --grep @ui
+The upload-artifact paths are with: inputs, not run working directories, so they need no
+change.
+
+Other ways to fix it would be to rename the folder so it has no spaces (too big a change
+for this) or to use working-directory: ./Week20.Middle.... The latter is not possible
+without renaming the folder, so the cd approach is correct.
+
+Next steps
+1. Start a new regression run (workflow_dispatch, suite = regression) on the branch at
+   85636bb or later. Do not re-run run 15, because a re-run reuses the broken commit.
+2. In the new run, check three things:
+   - ui-test (dev) gets past npm ci and runs the @ui test.
+   - Both blob-report-dev-ui and allure-results-dev-ui are uploaded.
+   - report (dev) prints parts finished: 3 of 3.
+3. Once the job really runs, the @ui test reaches demoqa.com. Its first real result could
+   still fail for other reasons, so judge that separately from this bug.
+
+Side note (did not cause the failure)
+Dev shard 1/2 took 4.5 min and shard 2/2 took 17 s. The difference is the DemoQA bookstore
+tests, which take 10-34 s each on both dev and staging (for example collection.spec.ts:9
+took 31-34 s). That is the slow public server, not this bug. Because of it the shards are
+badly unbalanced, which you may want to look at later.
+
+Logs I extracted for this analysis are in the scratchpad (triage-v1-C\logs). Nothing in
+the repository was modified.

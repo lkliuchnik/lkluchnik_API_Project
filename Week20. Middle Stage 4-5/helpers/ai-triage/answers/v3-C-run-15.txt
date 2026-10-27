@@ -1,0 +1,57 @@
+ci-triage v3 - case C (run #15) - the agent's answer, unchanged
+Agent run: 112 s, 13 tool calls, about 77 000 tokens
+
+Kind:          environment
+Confidence:    high. The job log shows the exact Docker error, every test job is green,
+               and git has the commit that fixes this step.
+
+Root cause:    Every test passed. The run went red because the ui-test (dev) job stopped
+               at its first run step (npm ci), before any test started. It runs inside a
+               container, and its working folder came from the workflow default, "Week20.
+               Middle Stage 4-5". GitHub passed that path to docker exec without quotes,
+               so Docker read "Middle" as a container name. The run used commit 761189e,
+               which still had that default for the ui-test job.
+
+Evidence:
+- logs/5_ui-test (dev).txt: Run npm ci -> "Error response from daemon: No such container:
+  Middle" -> "##[error]Process completed with exit code 1". No blob-report or
+  allure-results were uploaded.
+- logs/2_test (dev 2_2).txt, 3_test (dev 1_2).txt, 4_test (staging 1_1).txt:
+  "76 passed", "76 passed", "152 passed". The ✘ lines are test.fail known deviations,
+  not failures.
+- results-json-week20-regression-dev/results.json: stats expected=152, unexpected=0,
+  flaky=0, skipped=0. Metadata commit is 761189e87311945bfa6c291460d41e49f9df9fa3.
+- logs/1_report (dev).txt: "parts finished: 2 of 3". The missing part is the UI job.
+  logs/6_checks.txt succeeded (types, tags, plan).
+- .github/workflows/week20-middle4-5.yml lines 156-167 (HEAD): the ui-test job now has
+  working-directory: . and cd "Week20. Middle Stage 4-5" && .... A comment there
+  describes this exact error.
+
+Checked now:
+- git diff 761189e HEAD -- .github/workflows/week20-middle4-5.yml: the only change since
+  the run is that ui-test fix.
+- git log --oneline 761189e..HEAD -- <workflow>: that change is commit 85636bb (13:32,
+  16 minutes after 761189e). git branch -r --contains 85636bb shows it is already on
+  origin/week20-middle-stage-5.
+- I did not run curl: no server or network symptoms, every API request was answered.
+- I did not run the test locally: the cause is a pipeline step inside a GitHub container,
+  so a local run proves nothing.
+
+Not checked:
+- Whether a run on 85636bb or later has a green ui-test job. I only had this run's
+  artifacts.
+- The ui-test job's own test result. The job never got as far as the test.
+
+Also noticed:  nothing wrong in our code.
+- Dev shard 1 took 4.5 min and staging 4.8 min, against 17.1 s for shard 2. In
+  results.json the bookstore (DemoQA) tests take 14-31 s each, but they all passed. This
+  is slowness of the outside server, not a failure. I did not measure it now.
+- The "Error: No tests found" line in the checks job comes from the tag check when it
+  finds no untagged tests. The step passed, so it is harmless.
+
+Next step:
+- Re-run the workflow (regression, branch week20-middle-stage-5) so it uses HEAD with fix
+  85636bb. Re-running this run's failed jobs would use 761189e again and fail the same
+  way.
+- Confirm that ui-test reaches npx playwright test --grep @ui and that the dev report
+  shows "parts finished: 3 of 3".
