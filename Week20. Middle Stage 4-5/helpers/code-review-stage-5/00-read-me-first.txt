@@ -1,0 +1,56 @@
+Code review of Middle Stage 5 - read me first
+=============================================
+
+What this folder is for: the record of every code review made during Middle Stage 5 - what
+was found, what was fixed, what was left on purpose and why. One file per iteration, written
+before the commit of that step. (The reviews of Middle Stage 4 are in ../code-review.txt.)
+
+
+In short
+--------
+
+- Stage 5 is done in a branch (week20-middle-stage-5) with a pull request, so that the
+  "smoke on pull request" trigger really runs. Every step is reviewed before its commit.
+- Step 1 (tags, CI suites, secrets): 8 findings - 7 fixed, 1 left on purpose.
+- Step 2 (reports, job order, shards, numbers): 9 findings - 8 fixed, 1 left on purpose.
+- The browser test in a ready-made image: 6 findings - all fixed.
+- Step 3 (the data-driven password table): 10 findings - 9 fixed, 1 left on purpose.
+- Step 4 (schema validation): 8 findings - 7 fixed, 1 left on purpose; plus two mistakes of
+  our own that the checks themselves caught before the review.
+- Step 5 (failure classification): 10 findings - 7 fixed, 3 kept on purpose and written
+  down.
+- Step 6 (the AI triage agent): the one code change - a bug the agent itself found in the
+  account cleanup. 7 findings - 2 fixed (one of them an older gap next to the bug), 5 need
+  no change.
+
+
+The files
+---------
+
+   01-tags-ci-suites-secrets.txt        step 1 - tags, CI suites, secrets (S1-1 ... S1-8)
+   02-reports-job-order-shards.txt      step 2 - reports, job order, shards, CI numbers
+                                        (S2-1 ... S2-9)
+   03-browser-test-in-image.txt         the browser test in Playwright's ready-made Docker
+                                        image (S3-1 ... S3-6)
+   04-data-driven-password-table.txt    step 3 - the data-driven password table
+                                        (S4-1 ... S4-10)
+   05-schema-validation.txt             step 4 - schema validation (S5-1 ... S5-8)
+   06-failure-classification.txt        step 5 - failure classification (S6-1 ... S6-10)
+   07-ai-triage-agent.txt               step 6 - the AI triage agent, and the cleanup fix
+                                        it led to (S7-1 ... S7-7)
+
+The numbers (S2-5 and so on) stay the same in every file, so other documents can point to
+a finding by its number.
+
+
+How a review is done here
+-------------------------
+
+The same way as in Stage 4 (code-review.txt, part 1): an AI reviewer reads the staged
+changes only - it does not change files and does not run the tests. Every finding is
+checked in the code by hand before a decision, and each decision has a reason.
+
+How each finding is written:
+   Found:     what the reviewer saw
+   Example:   when it would hurt
+   Decision:  fixed / not changed, and why

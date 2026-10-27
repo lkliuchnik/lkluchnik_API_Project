@@ -1,14 +1,14 @@
 Test plan - Week 20
 ===================
 
-Start here. This file follows the text of the Middle Stage 4 task point by point - the
-topics, the practice tasks, the expected demonstration, the required evidence - and says
-for each point where it is done and where the evidence is. How the code works and how to
-extend it: README.txt.
+Start here. This file follows the text of the Middle Stage 4 and Middle Stage 5 tasks
+point by point - the topics, the practice tasks, the expected demonstration, the required
+evidence - and says for each point where it is done and where the evidence is. How the
+code works and how to extend it: README.txt.
 
 The folder is for Middle Stage 4 (stability, negative testing, edge cases) and Middle
-Stage 5 (data-driven suites, schema checks, CI suites). Stage 4 is done; Stage 5 has not
-started yet.
+Stage 5 (data-driven suites, schema checks, tests in CI, an AI triage agent). Both stages
+are done.
 
    DummyJSON          https://dummyjson.com             since week 18
    DemoQA Book Store  https://demoqa.com                since week 19
@@ -21,7 +21,30 @@ In short
 
    Middle Stage 4   done      154 tests (52 at the baseline, net +102)
                               CI green in dev, staging and ui-test
-   Middle Stage 5   not started
+   Middle Stage 5   done      180 tests (+26), three suites, CI on every pull request,
+                              every push to main and every night, reports as artifacts,
+                              an AI agent that tells whose problem a red run is
+
+What Stage 5 added
+   A data-driven table of 12 password rules, schema checks for the key answers of all
+   three APIs (13 checks and one contract check), and a real CI pipeline: the suites
+   smoke / regression / full chosen by tags, two environments, split runs, secrets from
+   GitHub, HTML and Allure reports to download, numbers on the run's Summary page, and a
+   way to tell test, environment and infrastructure failures apart.
+   Two more deviations were found: DemoQA refuses a dot as a special character (37), and
+   DummyJSON sends the password back in the user's profile (38).
+   The AI-tool agent ci-triage reads a red run and names the kind of failure and its
+   cause; its instructions went through three versions, measured on four red runs with
+   known answers. It found a real bug in our clean-up code, which is fixed now
+   (ai-triage/ai-triage.txt).
+   The short CI strategy: ci-strategy.txt.
+
+Numbers now
+   180 tests: 142 pass, 38 fail as expected (test.fail).
+   By API: DummyJSON 76, DemoQA 62 (one of them with a browser), PetStore 36,
+   local job server 6.
+   Suites: smoke 6, regression 179, full 180 (the one test outside regression waits a
+   real minute and runs every night).
 
 What Stage 4 added
    Negative tests in five categories, boundary values (numbers, lengths, pages, dates),
@@ -37,7 +60,7 @@ What it found
    PetStore answers "error" for a bulk create that still created half of the users;
    PetStore stores the date 2027-02-29 (which does not exist) as 2027-03-01.
 
-Numbers
+Numbers at the end of Stage 4
    154 tests: 118 pass, 36 fail as expected.
    By API: DummyJSON 71, DemoQA 46, PetStore 31, local job server 6.
    Three runs in a row with retries off: 154 of 154 as expected each time, 0 flaky.
@@ -58,12 +81,33 @@ edge-case-strategy.txt
    techniques, the rule behind each one, what was not tested and why, a checklist.
 
 assertion-notes.txt
-   What the tests check, and the 36 known deviations (8 DummyJSON, 15 DemoQA,
+   What the tests check, and the 38 known deviations (9 DummyJSON, 16 DemoQA,
    13 PetStore), each with the test, the correct rule and the real answer.
+
+ci-strategy.txt (Stage 5)
+   The short explanation of the CI strategy (required evidence): what runs when, and why.
+
+ci-improvements.txt (Stage 5)
+   What we changed in CI after real runs, with numbers - and what we suggest next for the
+   organization of the tests in CI.
+
+failure-classification.txt (Stage 5)
+   How we tell test, environment and infrastructure failures apart, with six real cases.
+
+schema-changes.txt (Stage 5)
+   Which answers the schema checks cover, when a schema change is expected and when it is
+   a risk, and how an intended change is reviewed.
 
 code-review.txt
    Every code review of Stage 4: what was found, fixed or left, and what was added after
    the check against the task text.
+
+code-review-stage-5/
+   The code reviews of Stage 5, one file per step. Start with 00-read-me-first.txt.
+
+ai-triage/ (Stage 5)
+   The AI triage agent: ai-triage.txt tells the story; the three versions of its
+   instructions, how each scored, and all its answers unchanged.
 
 reports/stability/
    The three clean runs on the final code (2026-10-23) and the earlier ones
@@ -77,14 +121,24 @@ reports/2026-10-23-staging-demoqa-timeouts.txt
    A second red run: DemoQA answered so slowly that the client gave up. What it taught
    about the cleanup.
 
+reports/2026-10-26-ci-smoke-demoqa-slow.txt (Stage 5)
+   The first red smoke run on the pull request: DemoQA was very slow. How it was
+   analysed, and why the DemoQA smoke test became shorter.
+
+reports/2026-10-26-ci-reports-and-shards.txt (Stage 5)
+   Two real runs of the new pipeline: the order of the jobs, the split into halves, the
+   reports to download, the numbers on the Summary page.
+
 screenshots/
-   Pictures of green CI runs.
+   Pictures of CI runs - green, red on purpose, the Summary tables, the artifacts, the
+   secrets page.
 
 Reading order
-   5 minutes    this file: "In short" and "Required evidence"
-   15 minutes   + edge-case-strategy.txt, "In short"
+   5 minutes    this file: "In short" and the two "Required evidence" parts
+   15 minutes   + ci-strategy.txt
+                + edge-case-strategy.txt, "In short"
                 + assertion-notes.txt, the deviations of one API
-   to extend    README.txt, parts 5-10
+   to extend    README.txt, parts 5-12
 
 
 Words used in these files
@@ -176,8 +230,55 @@ infrastructure failure
    A failure caused by a server or the network (for example 502 Bad Gateway), not by the
    test and not by the settings of the run.
 
-@ui, @slow
-   Tags in a test's options. @ui needs a browser; @slow waits a long time (1 minute).
+tag (@smoke, @regression, @slow, @ui)
+   A label in a test's options; a suite is chosen by its tags. @smoke - a quick happy
+   path; @regression - every test except the slow one; @slow waits a long time
+   (1 minute); @ui needs a browser. The names are in config/tags.ts.
+
+suite (smoke, regression, full)
+   A set of tests that runs together. Smoke: 6 quick tests. Regression: everything except
+   the slow test. Full: everything.
+
+data-driven test
+   One test body and a table of data; every row of the table becomes its own test, named
+   after what the row checks.
+
+schema
+   A description of what an answer looks like: its fields, their types, the allowed
+   values. A schema check compares a real answer with it.
+
+contract (swagger)
+   The description an API publishes of all its endpoints and answers. We check PetStore's
+   (swagger.json); for DummyJSON and DemoQA we keep our own practical schemas.
+
+CI (continuous integration), pipeline, workflow, job
+   CI runs the tests on GitHub's machines when something happens - a pull request, a
+   push, a time of day. The workflow file describes the pipeline: which jobs run, in which
+   order, with what. A job is one part of it that runs on one machine.
+
+test matrix
+   The same job run several times with different settings - here once per environment
+   (dev, staging), and for long suites once per half.
+
+shard
+   One part of a test run that is split over several machines running at the same time.
+
+artifact
+   A file a CI run keeps for download - here the HTML report, the Allure report and the
+   numbers in JSON.
+
+secret
+   A password or token kept in the settings of the GitHub repository, given to the run
+   as an environment variable, never written into the code or the workflow.
+
+Allure
+   A test report tool. Its report keeps the history of earlier runs, so it can show
+   trends: the pass rate over time, tests that are flaky again and again.
+
+pass rate
+   The share of tests that ended green: passed, failed as a known deviation, or passed on
+   the retry (flaky - counted in its own column too, so it is not hidden). Skipped tests
+   are left out.
 
 Basic auth
    A login sent as "user name:password" in a header. DemoQA accepts it for deleting an
@@ -469,10 +570,393 @@ test) - the final Stage 4 code
    Screenshot: screenshots/ci-green-run-7-review-fixes.png
 
 
-Middle Stage 5 - not started
-============================
+Middle Stage 5 - checked against the task text
+==============================================
 
-What Stage 5 will build on: the tags (@ui, @slow), the data tables of Stage 4, the
-PetStore services (for the swagger schema checks) and the stability numbers above.
-What the final Stage 4 review says must be ready first, and what belongs to Stage 5
-itself: code-review.txt, part 3.2 and part 4.
+The task: "Build parameterized test suites, apply practical schema validation, and
+integrate API tests into CI." Below, every point of the task text, with where it is done.
+The work is on the branch week20-middle-stage-5, with a pull request to main - so that
+"smoke on every pull request" really runs.
+
+
+Topics to learn - where each one is shown
+-----------------------------------------
+
+Data-driven testing: parameterized tests with clear case names and readable data tables
+   tests/bookstore/passwordRules.spec.ts - one table of password rules, one test body,
+   every row named after its rule (practice task 1)
+
+Schema validation: maintaining practical response schemas for critical endpoints and
+reviewing schema changes intentionally
+   schemas/ (the descriptions), assertions/schemaAssertions.ts (the check), three
+   schemas.spec.ts files; how a change is reviewed: schema-changes.txt (practice task 2)
+
+CI integration: running API tests in pipeline, environment variables, secrets, reporting
+   .github/workflows/week20-middle4-5.yml; TEST_ENV and the CI variable; the DummyJSON
+   passwords as GitHub secrets; HTML, JSON and Allure reports as artifacts
+   (practice tasks 3-7)
+
+Test tagging for smoke/regression/full execution
+   config/tags.ts, the npm scripts test:smoke / test:regression / test:full; CI checks
+   that every test is in a suite (practice task 5)
+
+Pipeline configuration for API tests (triggers, dependencies, artifacts)
+   triggers     pull request, push to main, every night, by hand
+   dependencies checks -> test and ui-test -> report (each waits for the one before)
+   artifacts    the merged reports for 14 days, the raw parts for 3 days
+   (ci-strategy.txt, "The order of the jobs")
+
+Test matrix (multiple environments / configs)
+   every suite in dev and staging - the same code, another user, other timeouts and
+   retries; the matrix is planned by the checks job (ci-strategy.txt)
+
+Parallelization strategies for API tests
+   regression and full split the dev tests into two halves (shards) on two machines;
+   each machine runs 2 tests at a time (Playwright's default for a 4-core machine);
+   staging in one job on purpose - less load on the
+   public servers. What we learned about uneven halves: ci-improvements.txt, part 3
+
+CI metrics (flakiness, pass rate trends)
+   the run Summary: passed, known deviations, failed, flaky, skipped, pass rate, time,
+   and the names of the failed and flaky tests (scripts/ci-summary.js); the trends: the
+   Allure history of the last 30 runs per suite and environment
+   Screenshots: screenshots/ci-full-run-29-summary.png (the table),
+   allure-regression-run-22-status-dynamics.png (the trend: four regression runs with
+   153, 153, 165 and 179 tests - the jumps are the password table and the schema checks;
+   run #15 is not in it, its browser part was missing, so it did not count),
+   allure-regression-run-22-overview.png (flaky tests: none, retried tests: none, new
+   tests: 14)
+
+Allure or similar reporting integration
+   Allure 3 (allurerc.mjs, allure-playwright), next to Playwright's HTML report; the
+   Allure report of run #22, opened locally: the two screenshots above
+
+
+Practice task 1. "Create a data-driven test suite with 8-12 parameterized cases"
+-------------------------------------------------------------------------------
+
+Where:    tests/bookstore/passwordRules.spec.ts - 12 cases on POST /Account/v1/User
+Table:    3 passwords accepted, 7 refused as too weak, 1 refused as missing, and 1 known
+          deviation (a dot as the special character - DemoQA refuses it, 37)
+Names:    the rule and the password, for example
+             too short: 7 characters: "Test!12"
+             no special character: "Test1234"
+             a Cyrillic capital "Т" (U+0422) instead of the Latin "T" is not an upper
+             case letter A-Z: "Тest!123"
+How:      one test body for all rows; "accepted" means created AND able to log in;
+          "refused" checks the status, DemoQA's code and its message; every account a row
+          creates is closed after the test
+Live:     the rules were tried on DemoQA first - 14 passwords and 31 special characters
+In CI:    regression run #20 (the commit of the table) - green
+Review:   code-review-stage-5/04-data-driven-password-table.txt
+
+
+Practice task 2. "Implement schema validation checks for critical endpoints and document
+how intended schema changes are reviewed"
+---------------------------------------------------------------------------------------
+
+Where:    tests/dummyjson/schemas.spec.ts, tests/bookstore/schemas.spec.ts,
+          tests/petstore/schemas.spec.ts - 14 tests
+Covers:   DummyJSON login, profile, a page of products, a new cart; DemoQA catalog, new
+          account, token, a reader's account; PetStore pet, order, user, error - and a
+          check that PetStore's live contract (swagger.json) is still our pinned copy
+How:      practical schemas for DummyJSON and DemoQA (the fields a client relies on,
+          extra fields allowed); PetStore answers checked against its own contract
+Found:    DummyJSON sends the password back in GET /auth/me (38); the same cart value has
+          two names on two endpoints; PetStore's contract is weak (almost every field
+          optional), so the error check uses a stricter version of it
+Document: schema-changes.txt - when a change is expected, when it is a risk, the review
+          steps, "never loosen a schema only to make a red test green"
+In CI:    regression run #22 - green, the contract check too
+Review:   code-review-stage-5/05-schema-validation.txt
+
+
+Practice task 3. "Configure the test suite to run in CI (GitHub Actions, Azure DevOps, or
+similar)"
+-----------------------------------------------------------------------------------------
+
+Where:    .github/workflows/week20-middle4-5.yml (GitHub Actions)
+Runs:     smoke on every pull request to main, regression on every push to main, full
+          every night at 02:00 UTC, any suite by hand
+Proof:    green runs #10, #12, #13, #17, #20, #22, #25, #29 (links at the end of this
+          part)
+
+
+Practice task 4. "Set up environment-based configuration (CI vs local)"
+----------------------------------------------------------------------
+
+Where:    playwright.config.ts (switched by the CI variable), config/environments.ts
+          (dev and staging, chosen by TEST_ENV), .env.example (what a local run needs)
+Differs:  CI - 1 retry, test.only forbidden, raw reports for merging, no trace (it would
+          record the login password in a downloadable report) except for the UI test, a
+          screenshot when the UI test fails. Local - no retries, a trace kept on failure.
+Docs:     README.txt, part 4; ci-strategy.txt
+
+
+Practice task 5. "Add test tagging (smoke vs regression)"
+--------------------------------------------------------
+
+Where:    config/tags.ts (Tag.SMOKE, REGRESSION, SLOW, UI); a tag on every describe block
+          and on every test outside one
+Suites:   smoke 6 (one or two happy paths per API, no test.fail), regression 179,
+          slow 1 (night only), ui 1 (its own job)
+Guard:    CI step "Every test is in a suite" - fails when a test has neither @regression
+          nor @slow, so a forgotten tag cannot silently drop a test
+Changed:  after the first red run, the DemoQA smoke test became shorter (3 requests
+          instead of 12) - reports/2026-10-26-ci-smoke-demoqa-slow.txt
+Review:   code-review-stage-5/01-tags-ci-suites-secrets.txt
+
+
+Practice task 6. "Configure test reporting (Allure or HTML report) as a CI artifact"
+-----------------------------------------------------------------------------------
+
+Where:    the report job of the workflow; merge.config.ts, allurerc.mjs
+Artifacts per environment, 14 days:
+             playwright-report-week20-<suite>-<env>   HTML, with a request log per test
+             allure-report-week20-<suite>-<env>       Allure, with history
+             results-json-week20-<suite>-<env>        the numbers
+Proof:    run #13 - 14 artifacts; screenshots/ci-regression-run-13-artifacts-1.png, -2.png;
+          reports/2026-10-26-ci-reports-and-shards.txt
+Review:   code-review-stage-5/02-reports-job-order-shards.txt
+
+
+Practice task 7. "Handle secrets/tokens via CI environment variables"
+--------------------------------------------------------------------
+
+Where:    repository secrets DUMMYJSON_PASSWORD_DEV and DUMMYJSON_PASSWORD_STAGING; the
+          workflow gives each environment job only its own password, the browser job none
+Code:     no password in the code any more; config/environments.ts reads it only when a
+          test logs in to DummyJSON. Missing - a clear message that says how to set it,
+          locally and in CI; the other APIs still run.
+Tokens:   the tests get their tokens by logging in during the run - none is stored
+Proof:    screenshots/github-secrets.png
+
+
+Practice task 8. "Modify or extend pipeline steps for API test execution"
+------------------------------------------------------------------------
+
+Before (Stage 4): three jobs side by side - test (dev), test (staging), ui-test - each
+with its own HTML report.
+Now:      checks first (types, the tag guard, the plan of the run); the test jobs from a
+          planned matrix with shards; ui-test inside Playwright's Docker image; one report
+          job per environment that merges all parts and writes the Summary; cancelling of
+          old runs only for pull requests
+Numbers:  regression 12 min 26 s (run #13) -> 4 min 53 s (run #17), because the browser
+          job no longer installs a browser (11 min -> 1 min 20 s)
+Docs:     ci-improvements.txt, parts 1-2; code-review-stage-5/03-browser-test-in-image.txt
+
+
+Practice task 9. "Analyze a failed pipeline run and classify the failure type (test vs
+environment vs infrastructure)"
+------------------------------------------------------------------------------------
+
+Where:    failure-classification.txt - the signs of each kind, the steps we follow with a
+          red run, and six real cases, three of them in CI:
+             run #24        test - a wrong expected status (made on purpose, then taken
+                            back in run #25)
+             run #15        environment - the browser job could not start in Docker
+                            (a folder name with spaces)
+             first smoke    infrastructure - DemoQA answered in 3 to 14 seconds
+Code:     an outage in the main setup steps skips the test with "infrastructure: ..."
+          instead of failing it (fixtures/infrastructure.ts); the clean-up no longer
+          reports a false leak after a slow DemoQA
+Review:   code-review-stage-5/06-failure-classification.txt
+
+
+Practice tasks 10-14 - AI
+-------------------------
+
+10. "Create and customize an AI agent or workflow to support a QA task and demonstrate
+    its value"
+11. "Iteratively refine prompts or agent instructions to improve output quality and
+    reliability"
+12. "Use MCP servers or CLI-based tools to interact with APIs or test infrastructure"
+13. "Use AI to analyze failed pipeline runs and suggest possible root causes, then verify
+    manually"
+14. "Identify cases where AI-generated solutions are insufficient and implement a manual
+    or alternative approach"
+
+All five: ai-triage/ai-triage.txt (the story), with the instructions, the scores and every
+answer of the agent in the same folder.
+
+10. Agent:  the AI-tool agent ci-triage - reads what a red run leaves (reports, job logs)
+            and the code, answers: the kind (test / environment / infrastructure), the
+            root cause, the evidence, what it checked, what it could not check, a next
+            step. Read-only. Its instructions: ai-triage/prompt-v3.txt.
+    Value:  it found a real bug our own analysis had missed - the "leaked data" note named
+            no account ("undefined") when a test ran out of time; checked by hand and
+            fixed (fixtures/bookstore.fixture.ts). One to three minutes per red run.
+11. Versions: three, each run on the same four red runs with known answers, by fresh
+            agents that could not see our analyses: 32, 39, 39 of 40. What changed each
+            time and why: ai-triage/scores.txt.
+12. Tools:  command-line tools - git (what changed since the run), curl (how a server
+            answers now), npx playwright (run the failed test again locally). Not gh or
+            a GitHub MCP server: both need a GitHub login on this computer; the run's
+            files are downloaded from the GitHub page by hand.
+13. Checked: all four root causes match what we knew (three CI runs analysed by hand
+            before, one local run made for the test);
+            run #24 also checked by a person on the GitHub page, 27 October 2026 - all six
+            points matched. One wrong detail found by hand (where the staging password
+            is published).
+14. Not enough: run #15 without its job logs - the right kind, but a wrong guess for the
+            cause and a next step that would not work. Found by hand in the job log
+            ("No such container: Middle"). ai-triage.txt, part 8.
+
+
+Practice task 15. "Suggest improvements to test organization in CI (e.g., tagging,
+splitting suites, execution strategy)"
+----------------------------------------------------------------------------------
+
+Where:    ci-improvements.txt
+Done:     a shorter DemoQA smoke test; the browser test in a ready image
+Suggested (part 4): a tag per API, a quarantine tag for flaky tests, the PetStore
+          contract check at night only; regression split by API; staging smoke on push
+          and full at night; smoke as a required check for merging; a quick health check
+          of the APIs before the tests; a message when the night run is red; the Allure
+          history on a web page
+
+
+Expected demonstration - where it shows
+---------------------------------------
+
+"Can design readable data-driven tests without hiding business meaning"
+   passwordRules.spec.ts: the table is the specification - each row says the rule in
+   plain words, the expected outcome is a word (accepted / refused: too weak / refused:
+   missing), the test name is the rule. The one body is short: the status, and then
+   either the login with the new password or DemoQA's code and message; the known
+   deviation has its own table, with its reason above it.
+
+"Understand the purpose of schema validation and can explain when a schema update is
+expected vs when it signals a risk"
+   schema-changes.txt, "When a change is expected, and when it is a risk" - and a real
+   risk found by a schema: a password in DummyJSON's profile (38).
+
+"Can configure and run API tests in CI independently"
+   The pipeline was built step by step in this stage; every change was checked in a
+   real run, and the red runs were analysed and fixed (the runs at the end of this part).
+
+"Understand test organization for CI efficiency (smoke on PR, full nightly)"
+   ci-strategy.txt - smoke on a pull request, regression on main, full every night, and
+   why; ci-improvements.txt - what made the runs faster. Smoke ran on every push to the
+   pull request; the full suite ran by hand on the branch (run #29), because night runs
+   start only from main, after the merge.
+
+"Distinguishes between infrastructure, environment, and test failures"
+   failure-classification.txt - one real CI case of each kind.
+
+"Understands pipeline dependencies and execution flow"
+   ci-strategy.txt, "The order of the jobs"; the comments at the top of the workflow;
+   README.txt, part 11, "How a CI run is built".
+
+
+Completion criteria
+-------------------
+
+"The learner has data-driven suites, schema validation for key endpoints, and
+CI-integrated API test execution with reporting."
+   Data-driven: passwordRules.spec.ts (12 cases); the Stage 4 tables (boundaries, error
+   consistency) are data-driven too. Schemas: 14 tests on the key answers of three APIs.
+   CI with reporting: the workflow, HTML and Allure reports as artifacts, the Summary.
+
+
+Required evidence
+-----------------
+
+[x] Data-driven test suite with clear case names
+       tests/bookstore/passwordRules.spec.ts
+[x] Schema validation coverage for key endpoints
+       schemas/, tests/*/schemas.spec.ts; the list: schema-changes.txt, "What is covered"
+[x] CI pipeline configuration file
+       .github/workflows/week20-middle4-5.yml
+[x] Test report published as CI artifact
+       run #13: screenshots/ci-regression-run-13-artifacts-1.png, -2.png
+[x] Short explanation of CI strategy (what runs when, why)
+       ci-strategy.txt
+
+
+How the work is split into commits
+----------------------------------
+
+On the branch week20-middle-stage-5 (pull request #1 to main):
+
+1. "Tags, CI suites and secrets."   (bc4bc6d)
+   Tags and suites, the CI triggers, the passwords as secrets, .env.example.
+2. "Lighter DemoQA smoke test after a slow CI run."   (88f2f92)
+   + "Green smoke run on the pull request."   (3b8c4b5)
+3. "Reports, job order, shards and CI numbers."   (e4cda3e)
+   The checks and report jobs, shards, Allure, the Summary table.
+4. "Browser test in the Playwright image, CI improvements."   (761189e)
+   + "Browser test job: start outside the folder with spaces."   (85636bb)
+   + "CI improvements: numbers after the browser image."   (830ba00)
+5. "Data-driven password rules table."   (6de7c52)
+6. "Schema validation for key endpoints."   (cbcfa3c)
+   + "Schemas: green regression run in CI."   (be48ed5)
+7. "Deliberate test mistake for the failure classification demo."   (6c61e48)
+   + "Revert the deliberate test mistake."   (ad821fa)
+8. "Failure classification: three kinds, real cases, clearer outages."   (cd7b267)
+9. "AI triage agent: three versions, checked by hand, a bug it found."   (df87ea8)
+   The AI-tool agent ci-triage (ai-triage/), the fix of the bug it found, and the code
+   review of that fix (code-review-stage-5/07-ai-triage-agent.txt).
+10. "CI strategy, CI suggestions and the Stage 5 test plan."
+   ci-strategy.txt, the CI suggestions, this part of the test plan (with practice tasks
+   10-14).   (a2b96a6)
+11. "Full run and Allure trend screenshots."
+   The evidence of the full suite (run #29) and of the Allure trend, before the merge.
+
+Every commit name starts with "Week 20. Middle Stage 5.".
+
+
+Evidence: CI runs of Middle Stage 5
+-----------------------------------
+
+Workflow: API tests — Week 20 (Middle Stage 4-5), .github/workflows/week20-middle4-5.yml
+The regression runs were started by hand on the branch (Run workflow), because a push to
+main comes only with the merge.
+
+First smoke run on the pull request - red, infrastructure (DemoQA very slow)
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40297804152
+   reports/2026-10-26-ci-smoke-demoqa-slow.txt
+
+Run #10 - smoke, green after the shorter DemoQA smoke test
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40303076727
+   Screenshot: screenshots/ci-pr-smoke-green-run-10.png
+
+Run #12 - smoke, the new pipeline (checks -> test -> report), green in 53 s
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40308438378
+   Screenshots: screenshots/ci-pr-smoke-run-12.png, ci-pr-smoke-run-12-summary.png
+
+Run #13 - regression by hand, green, 12 min 26 s (the browser install: 11 min)
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40309198930
+   Screenshots: screenshots/ci-regression-run-13.png, -summary.png, -artifacts-1.png,
+   -artifacts-2.png
+
+Run #15 - regression by hand, red, environment (the browser job in Docker)
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40313872196
+   Screenshots: screenshots/ci-regression-run-15-ui-test-no-such-container.png,
+   ci-regression-run-15-summary-warning.png (the "only 2 of 3 parts" warning)
+
+Run #17 - regression by hand, green, 4 min 53 s (the browser job: 1 min 20 s)
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40315958722
+   Screenshot: screenshots/ci-regression-run-17.png
+
+Run #20 - regression by hand, green, with the data-driven table
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40321147007
+   Screenshot: screenshots/ci-regression-run-20.png
+
+Run #22 - regression by hand, green, with the schema checks
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40328109842
+   Screenshot: screenshots/ci-regression-run-22-schemas.png
+
+Run #24 - smoke, red on purpose, test (a wrong expected status)
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40331114534
+   Screenshots: screenshots/ci-pr-run-24-test-mistake-*.png (6)
+
+Run #25 - smoke, green after the mistake was taken back
+   Screenshot: screenshots/ci-pr-run-25-after-revert.png
+
+Run #29 - full by hand on the branch (commit a2b96a6), green, 6 min 38 s
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40472160830
+   All 7 jobs green, 14 artifacts. full-dev: 180 tests (142 passed + 38 known
+   deviations) in 4 min 31 s - with the 1-minute token test and the browser test;
+   full-staging: 179 (no browser test) in 5 min 40 s. 0 failed, 0 flaky, pass rate 100%.
+   Screenshots: screenshots/ci-full-run-29.png, ci-full-run-29-summary.png

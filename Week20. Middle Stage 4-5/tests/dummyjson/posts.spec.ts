@@ -1,10 +1,11 @@
 import { test, expect } from '../../fixtures/dummyjson.fixture';
 import { HttpStatus } from '../../test-data/httpStatus';
 import { NON_EXISTENT_ID } from '../../test-data/dummyjson/constants';
+import { Tag } from '../../config/tags';
 
 // Written with the new PostService only - no change in the client, the interceptors or the
 // config was needed. See helpers/README.txt, "How to add a new service".
-test.describe('Posts', () => {
+test.describe('Posts', { tag: Tag.REGRESSION }, () => {
   test('all posts of the logged-in user belong to that user', async ({ authApi }) => {
     const { status: meStatus, body: me } = await authApi.auth.getCurrentUser();
     expect(meStatus, 'precondition: GET /auth/me').toBe(HttpStatus.OK);

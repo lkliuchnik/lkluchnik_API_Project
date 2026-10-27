@@ -1,12 +1,13 @@
 import { test, expect } from '../../fixtures/bookstore.fixture';
 import { buildCredentials } from '../../test-data/bookstore/accountFactory';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Middle Stage 3: one multi-step flow across related resources - an account, its token, the
 // catalog, the reader's collection. Every step uses data from the steps before it.
 // The test opens the account itself (it is the first step of the flow); accountCleanup closes
 // it if the test stops half-way.
-test('a reader opens an account, builds and changes a collection, then closes the account', async ({
+test('a reader opens an account, builds and changes a collection, then closes the account', { tag: Tag.REGRESSION }, async ({
   bookstore,
   catalog,
   accountCleanup,

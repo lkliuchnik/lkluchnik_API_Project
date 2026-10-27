@@ -3,6 +3,7 @@ import { expectPetStoreError } from '../../assertions/petstore/errorAssertions';
 import { imageFile, TINY_PNG } from '../../test-data/petstore/files';
 import { uniqueId } from '../../test-data/petstore/petFactory';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Multipart/form-data: POST /pet/{petId}/uploadImage takes a form with two parts -
 // "file" (the image, required) and "additionalMetadata" (a description, optional) - instead
@@ -15,8 +16,8 @@ function uploadedMessage(metadata: string | null, fileName: string, size: number
   return `additionalMetadata: ${metadata}\nFile uploaded to ./${fileName}, ${size} bytes`;
 }
 
-test.describe('Multipart upload: a correct form', () => {
-  test('a file with a description: the answer names the file, its size and the description', async ({
+test.describe('Multipart upload: a correct form', { tag: Tag.REGRESSION }, () => {
+  test('a file with a description: the answer names the file, its size and the description', { tag: Tag.SMOKE }, async ({
     petstore,
     pet,
   }) => {
@@ -41,7 +42,7 @@ test.describe('Multipart upload: a correct form', () => {
   });
 });
 
-test.describe('Multipart upload: a wrong form', () => {
+test.describe('Multipart upload: a wrong form', { tag: Tag.REGRESSION }, () => {
   // known deviation: 500 with an HTML error page - a form without its required part is a client error
   test.fail('without the file part the request is rejected with 400', async ({ petstore, pet }) => {
     const form = new FormData();

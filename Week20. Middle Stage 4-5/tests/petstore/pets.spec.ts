@@ -1,11 +1,12 @@
 import { test, expect } from '../../fixtures/petstore.fixture';
 import { buildPet, buildPetStoreUser } from '../../test-data/petstore/petFactory';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // PetStore really keeps data, so a change can be checked with a second request.
 // The server is public and shared: every test makes its own pets and users with unique ids.
 
-test('a new pet can be read, changed and deleted', async ({ petstore, petstoreCleanup }) => {
+test('a new pet can be read, changed and deleted', { tag: [Tag.REGRESSION, Tag.SMOKE] }, async ({ petstore, petstoreCleanup }) => {
   const pet = buildPet();
   petstoreCleanup.pet(pet.id);
 
@@ -37,7 +38,7 @@ test('a new pet can be read, changed and deleted', async ({ petstore, petstoreCl
   });
 });
 
-test('POST /user/createWithArray creates every user in the list', async ({ petstore, petstoreCleanup }) => {
+test('POST /user/createWithArray creates every user in the list', { tag: Tag.REGRESSION }, async ({ petstore, petstoreCleanup }) => {
   const users = [buildPetStoreUser(), buildPetStoreUser()];
   users.forEach((user) => petstoreCleanup.user(user.username));
 

@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/jobs.fixture';
 import { JobStatus } from '../../models/jobs/job';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Asynchronous operations: the server accepts a job at once (202) and does the work later.
 // The client learns the result either by asking again and again (polling) or by being
@@ -14,8 +15,8 @@ import { HttpStatus } from '../../test-data/httpStatus';
 
 const POLL = { intervalMs: 200, timeoutMs: 10_000 };
 
-test.describe('Background jobs - polling', () => {
-  test('a job is accepted at once (202) and done later: polling sees it only move forward to done', async ({
+test.describe('Background jobs - polling', { tag: Tag.REGRESSION }, () => {
+  test('a job is accepted at once (202) and done later: polling sees it only move forward to done', { tag: Tag.SMOKE }, async ({
     jobs,
   }) => {
     const { status, body: accepted } = await jobs.start({ task: 'resize photos', durationMs: 3_000 });
@@ -77,7 +78,7 @@ test.describe('Background jobs - polling', () => {
   });
 });
 
-test.describe('Background jobs - webhook', () => {
+test.describe('Background jobs - webhook', { tag: Tag.REGRESSION }, () => {
   test('the server calls back when the job ends, with the same result polling would show', async ({
     jobs,
     webhooks,

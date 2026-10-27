@@ -1,7 +1,8 @@
 import { test, expect } from '../../fixtures/dummyjson.fixture';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
-test.describe('Product pagination', () => {
+test.describe('Product pagination', { tag: Tag.REGRESSION }, () => {
   const PAGE_SIZE = 10;
   const MAX_RESPONSE_TIME_MS = 3000;
 

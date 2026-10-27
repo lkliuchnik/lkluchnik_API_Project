@@ -1,0 +1,58 @@
+Code review - the browser test in Playwright's ready-made image
+===============================================================
+
+One iteration of the Middle Stage 5 code review (26 October 2026). How a review is done, and
+the list of all iterations: 00-read-me-first.txt in this folder.
+
+
+What changed, in plain words: the browser test job now runs inside Playwright's own Docker
+image, where the browser is already installed. Installing it every time took 11 of the
+job's 12 minutes (ci-improvements.txt, part 2).
+
+The reviewer first checked the parts that usually break in such a setup - file
+permissions inside the container, where the browser lives, the CI variables, the paths of
+the downloads - and found them fine. Then six smaller points:
+
+S3-1. The version check could be fooled
+   Found:     to keep the image and Playwright on the same version, a check searched the
+              whole workflow file for the version text. A comment with that text would
+              have been enough to pass, even with a wrong image.
+   Decision:  fixed by S3-2 - the check is no longer needed.
+
+S3-2. The version did not need to be written by hand at all
+   Found:     the image version was typed into the workflow, and a check compared it with
+              the project. GitHub can build the image name from what an earlier job found.
+   Decision:  fixed. The "checks" job reads the Playwright version of the project, and the
+              browser job takes the image of exactly that version. An update of Playwright
+              now needs no change in the workflow.
+
+S3-3. The check looked at the wrong package
+   Found:     the version was read from @playwright/test, but the browsers belong to
+              playwright-core - the package that really runs the tests.
+   Decision:  fixed. The version now comes from playwright-core.
+
+S3-4. Node.js was installed again inside the image
+   Found:     the image already has Node.js, but the job still downloaded another one, and
+              its npm cache could not be shared with the other jobs anyway.
+   Decision:  fixed. The browser job uses the Node.js of the image.
+
+S3-5. A wrong number in ci-improvements.txt
+   Found:     the document said 4 tests talk to DemoQA at the same moment. A GitHub machine
+              has 4 processor cores, and Playwright uses half of them - so it is 2 tests at
+              once per machine.
+   Decision:  fixed: "4 instead of 2" when DemoQA is split over two machines.
+
+S3-6. A wrong reason in ci-improvements.txt
+   Found:     the document said "more machines do not help, the order is still
+              alphabetical". They would help a little: with 4 machines the DemoQA tests
+              spread over two of them.
+   Decision:  fixed. The real downside is written instead: more DemoQA tests at the same
+              moment, and more machine minutes.
+
+How it was checked
+   - The workflow file parsed without errors; the line that writes the version gives
+     "playwright=1.63.0" here, the version in package-lock.json.
+   - The real check was the next regression run (#15) - and it found a problem no review
+     had seen: inside a container, a working folder with spaces in its name does not
+     work ("No such container: Middle"). The browser job now starts in the repository
+     root and goes into the week folder itself (ci-improvements.txt, part 2).

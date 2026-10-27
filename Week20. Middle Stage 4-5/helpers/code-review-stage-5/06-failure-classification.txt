@@ -1,0 +1,87 @@
+Code review - step 5: failure classification
+============================================
+
+One iteration of the Middle Stage 5 code review (26 October 2026). How a review is done,
+and the list of all iterations: 00-read-me-first.txt in this folder.
+
+
+What the step added, in plain words: a document that explains how we tell test,
+environment and infrastructure failures apart, with six real cases
+(../failure-classification.txt) - and two changes in the code that make such failures
+easier to read:
+- a setup step that hits a server outage now skips the test with the reason
+  "infrastructure: ..." instead of failing it (fixtures/infrastructure.ts);
+- the account clean-up first asks DemoQA whether an account still exists before it reports
+  "leaked data".
+
+For the document we also made one CI failure on purpose: a test that expected 201 where the
+PetStore answers 200 (run #24, red), taken back in the next commit (run #25, green).
+
+S6-1. A wrong address would have been hidden as "infrastructure"
+   Found:     every "no response from the server" skipped the test - but our client writes
+              that message also for a wrong address or a refused connection. Those are a
+              wrong set-up of the run (environment), and must stay red.
+   Decision:  fixed. Only a request that ran out of time (or whose connection broke) counts
+              as an outage. Checked: a timeout is skipped, a wrong address fails.
+
+S6-2. Not every setup step is covered
+   Found:     the documents said "a setup step that hits an outage skips the test", but the
+              logins behind the logged-in clients and some other setup requests are not
+              wrapped.
+   Decision:  the documents now say exactly what is covered (the catalog, a new reader, a
+              new pet, the bulk and password table requests) and what is not yet (the
+              logins, DummyJSON's post lookup, setup requests written inside a test). The
+              logins happen inside the client on the first request; wrapping them would
+              change the client, for a case we have not seen yet. Left for later, listed.
+
+S6-3. "Not found" does not prove the account is gone
+   Found:     the existence check asks with the user name and password. Checked live: DemoQA
+              answers 404 "User not found!" for a deleted account AND for an existing one
+              with a wrong password.
+   Decision:  kept, with the limit written in the code and the documents: the clean-up
+              asks with the name and password the account was created with - the right ones
+              by construction. Without the check, every slow DELETE turns into a false leak,
+              which we saw three times.
+
+S6-4. A timeout of the second DELETE skipped the existence check
+   Found:     if the password DELETE itself ran out of time, the clean-up reported "leaked
+              data" without asking whether the account still exists.
+   Decision:  fixed. Both DELETE ways are tried, then the check runs whatever they gave.
+
+S6-5. The leak message could claim "still exists" without knowing
+   Found:     any answer of the check other than 404 was reported as "the account still
+              exists" - also a 502. And a timeout of the check lost the details of the two
+              DELETE tries.
+   Decision:  fixed. "Still exists" only for a 200; otherwise "the check answered 502". A
+              failed check keeps what both DELETE tries answered.
+
+S6-6. A thrown value that is not an Error
+   Decision:  fixed - the check reads the message safely.
+
+S6-7. The "is it the gateway?" rule was written three times
+   Found:     the fixtures, the bulk user tests and the password table each had their own
+              copy of "502/503/504 -> skip as infrastructure".
+   Decision:  fixed. One function, skipIfGatewayError, in fixtures/infrastructure.ts, used by
+              all three.
+
+S6-8. The list of gateway codes could be changed by any test
+   Decision:  fixed - the list is read-only.
+
+S6-9. Two empty lines left after a move
+   Decision:  fixed.
+
+S6-10. A 500 is not counted as an outage, though the Stage 4 plan said "5xx"
+   Found:     the Stage 4 review planned "5xx or no answer" for the setup steps.
+   Decision:  kept on purpose, and written down: a 500 comes from the application itself and
+              can be a real bug - turning it into "skipped" would hide exactly what tests
+              are for. Only the gateway codes 502, 503 and 504 mean "the request never
+              reached the application".
+
+How it was checked
+   - A probe test, removed afterwards: a 502 and a timeout in a setup step - skipped with
+     the reason; a wrong address - failed; a 500 - not skipped; an account deleted behind
+     the clean-up - a "cleanup note", no "leaked data".
+   - Live: DemoQA's Authorized for a right password (200), a wrong one (404) and a
+     deleted account (404).
+   - All DemoQA and PetStore tests once, retries off: 97 of 97 as expected, no leaked data.
+   - tsc clean.

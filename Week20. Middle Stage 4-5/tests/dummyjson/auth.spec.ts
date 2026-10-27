@@ -1,7 +1,8 @@
 import { test, expect } from '../../fixtures/dummyjson.fixture';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
-test.describe('Access control', () => {
+test.describe('Access control', { tag: Tag.REGRESSION }, () => {
   const PAGE_SIZE = 5; // the access check does not need more products
 
   test('GET /auth/products without a token is rejected with 401', async ({ api }) => {
@@ -12,7 +13,7 @@ test.describe('Access control', () => {
     expect(body.products).toBeUndefined(); // no data leaks in the error response
   });
 
-  test('GET /auth/products with a valid token returns products', async ({ api, authToken }) => {
+  test('GET /auth/products with a valid token returns products', { tag: Tag.SMOKE }, async ({ api, authToken }) => {
     const { status, body } = await api.products.getProtectedPage(PAGE_SIZE, authToken);
 
     expect(status).toBe(HttpStatus.OK);
@@ -53,7 +54,7 @@ test.describe('Access control', () => {
   });
 });
 
-test.describe('Login validation', () => {
+test.describe('Login validation', { tag: Tag.REGRESSION }, () => {
   test('login with a wrong password is rejected with a clear message', async ({ api, env }) => {
     const { status, body } = await api.auth.login(env.dummyjson.username, 'wrong-password');
 

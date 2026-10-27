@@ -1,0 +1,52 @@
+ci-triage v3 - case C2 (run #15, only the downloadable report, no job logs) - the agent's
+answer, unchanged
+Agent run: 89 s, 10 tool calls, about 60 000 tokens
+
+Kind:          environment
+Confidence:    medium. The artifacts show the UI part is missing, and the commit that
+               follows this run fixes a ui-test step that could not start. I did not have
+               the ui-test job log, so I have not seen its actual error.
+Root cause:    The tests passed. The run is red because the ui-test (dev) job failed
+               before it wrote a report. At commit 761189e that job ran in the Playwright
+               container with the workflow's default working directory, "Week20. Middle
+               Stage 4-5". A container step cannot start in a folder whose name has
+               spaces, so the job never reached its test.
+Evidence:
+- results.json stats: 152 expected, 0 unexpected, 0 flaky, 0 skipped, errors []. The 36
+  tests with expectedStatus "failed" are test.fail known deviations, not failures.
+- results.json config.projects: 2 entries, both "actualWorkers": 2. These are only the two
+  API shards (dev 1/2 and 2/2). There are no results from tests/bookstore/profileUi.spec.ts,
+  the only @ui test (line 15).
+- .github/workflows/week20-middle4-5.yml lines 218-233: for regression the dev report
+  expects 3 parts (2 shards plus dev-ui). So only 2 of 3 parts arrived.
+- playwright.config.ts at 761189e, line 25: every CI test step writes blob
+  report-<REPORT_PART>.zip, even when tests fail. A missing dev-ui blob therefore means the
+  job stopped before or at the test step, not that the UI test failed. A failed UI test
+  would appear in this report as unexpected.
+- git show 761189e:.github/workflows/week20-middle4-5.yml: the ui-test job has a container
+  and no own working-directory, so it inherits "Week20. Middle Stage 4-5".
+- git show 85636bb (the commit right after 761189e): it sets working-directory "." for
+  ui-test and adds cd "Week20. Middle Stage 4-5" to its steps. Its comment says GitHub
+  passes the folder path to Docker unquoted, which gives "No such container: Middle".
+Checked now:
+- node over results.json: stats, the non-passing tests, files and project entries (see
+  above).
+- git log 761189e..HEAD and git show 761189e / 85636bb on the workflow, ci-summary.js,
+  playwright.config.ts and merge.config.ts.
+- scripts/ci-summary.js at 761189e always exits 0. So the report job only prints a WARNING
+  about missing parts; it does not turn the run red.
+- No curl: no request was slow or failed (DummyJSON and PetStore tests take 140-800 ms;
+  DemoQA tests take 6-19 s, which matches the 5-25 s the config expects for opening and
+  closing an account).
+- No local npx playwright run: the cause is a pipeline step inside the CI container, which
+  a local run cannot reproduce.
+Not checked:   The GitHub job log of ui-test (dev) in run 15, which would show the exact
+               error. The Summary page of run 15 ("only 2 of 3 parts" warning). The staging
+               report and test jobs, which I did not get. Whether a run after 85636bb has a
+               green ui-test job.
+Also noticed:  nothing
+Next step:
+1. Open run 15 > job "ui-test (dev)" and confirm which step failed and with what error
+   (expected: "No such container: Middle" on the npm ci step).
+2. Run the workflow again by hand (regression) on a commit that includes 85636bb or later.
+   Check that ui-test is green and that the Summary shows 3 of 3 dev parts.

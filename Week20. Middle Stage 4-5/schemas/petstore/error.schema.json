@@ -1,0 +1,7 @@
+{
+  "$id": "petstore/error",
+  "description": "A PetStore error answer, made strict: the swagger's ApiResponse has no required fields, so even {} would match it. Here code, type and message must all be there.",
+  "allOf": [{ "$ref": "swagger#/definitions/ApiResponse" }],
+  "type": "object",
+  "required": ["code", "type", "message"]
+}

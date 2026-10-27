@@ -1,0 +1,17 @@
+{
+  "$id": "dummyjson/login",
+  "description": "POST /auth/login - a successful login: the two tokens and who is logged in. New fields are allowed (an expected change); a missing or retyped field below is a risk.",
+  "type": "object",
+  "required": ["accessToken", "refreshToken", "id", "username", "email", "firstName", "lastName"],
+  "properties": {
+    "accessToken": { "type": "string", "minLength": 1 },
+    "refreshToken": { "type": "string", "minLength": 1 },
+    "id": { "type": "integer" },
+    "username": { "type": "string" },
+    "email": { "type": "string" },
+    "firstName": { "type": "string" },
+    "lastName": { "type": "string" },
+    "gender": { "type": "string" },
+    "image": { "type": "string" }
+  }
+}

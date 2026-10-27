@@ -1,0 +1,147 @@
+CI strategy - what runs when, and why
+=====================================
+
+This is the short explanation of how our API tests run in CI: which tests run on which
+event, in which order, and why we chose it this way. It is the required evidence "short
+explanation of CI strategy (what runs when, why)" of Middle Stage 5.
+
+The pipeline itself: .github/workflows/week20-middle4-5.yml (GitHub Actions).
+The suites: package.json (test:smoke, test:regression, test:full) and config/tags.ts.
+
+
+The short version
+-----------------
+
+   pull request to main    smoke        6 tests       about 1 minute
+   push to main            regression   179 tests     about 5 minutes
+   every night, 02:00 UTC  full         180 tests     regression + the 1-minute test
+   by hand (Run workflow)  any of them                to check a branch or re-check
+
+Every suite runs in two environments, dev and staging. The browser test runs for
+regression and full only. Every run leaves its reports to download and writes its
+numbers on the run's Summary page.
+
+The idea in one sentence: the more often something runs, the smaller and faster it is -
+and the closer a change gets to main, the more of the suite it has to pass.
+
+
+What runs when, and why
+-----------------------
+
+On a pull request - smoke (6 tests, one or two per API)
+   A pull request gets a new run on every push, so it must answer fast: "is anything
+   obviously broken?" Smoke is one happy path per area - log in, read a protected list,
+   create and delete a pet, upload a file, a background job, open a DemoQA account.
+   Each smoke test makes as few requests as possible, because the public servers can be
+   slow (our first red run was exactly that: reports/2026-10-26-ci-smoke-demoqa-slow.txt).
+   No test.fail in smoke, no browser: a red smoke run should always mean "look now".
+   Real runs: #12 green in 53 seconds; #24 red on purpose, #25 green again.
+
+On a push to main - regression (everything except the slow test)
+   Main is what everybody builds on, so every commit that lands there gets the whole
+   suite: negative tests, boundaries, the data-driven table, the schema checks, the known
+   deviations, the check of the PetStore contract, and the browser test. A run on main is
+   not cancelled by a newer push - it runs to the end. (GitHub keeps only one waiting run
+   per branch, so when several pushes come while a run is going, only the newest of the
+   waiting ones runs.)
+   Real runs (started by hand on the branch, the same suite): #13, #17, #20, #22 - green.
+   Since the browser test runs in a ready image, about 5 minutes (#17: 4 min 53 s, #20:
+   5 min 10 s); before it, 12 min 26 s (#13).
+
+Every night - full (everything)
+   The night run adds the test that waits a real minute for a token to expire - too slow
+   for every push. It also runs everything else again on days when nobody pushes, so a
+   change we do not cause ourselves - a public API changing its answers - is seen within
+   a day. GitHub starts night runs only from the workflow file on main, so they begin
+   after this branch is merged.
+   The same suite, started by hand on the branch before the merge: run #29, green in
+   6 min 38 s - 180 tests in dev, 179 in staging (screenshots/ci-full-run-29.png).
+
+By hand - any suite
+   Actions > this workflow > Run workflow, choose the suite. We used it to run regression
+   on the branch before the merge, and it is the way to re-check after an outage.
+
+Only changes in this week's folder or in this workflow start a run (paths in the
+workflow). A change in another week's folder does not run week 20's tests.
+
+
+The order of the jobs
+---------------------
+
+   checks  ->  test (dev 1/2, dev 2/2, staging)  ->  report (dev, staging)
+           ->  ui-test (not for smoke)           ->
+
+checks (about 10 seconds) comes first and decides whether the rest is worth running: the
+types compile, every test has a suite tag (a test without one would silently drop out of
+regression), and it plans the run - which suite, how many parts, which Playwright image.
+If checks fails, nothing else starts.
+
+test and ui-test run at the same time. The browser test has its own job because it is
+the slowest and least stable part (a web page, not an API) - a browser problem must not
+hide the API results, and the API results must not wait for the browser.
+
+report runs after all of them, also when some failed - a red run needs its report most.
+It glues the parts of one environment together. It does not run after a cancelled run.
+
+
+Two environments - the test matrix
+----------------------------------
+
+Every suite runs in dev and in staging: another test user, other timeouts and retries,
+the same code (config/environments.ts). This shows that the settings, not the tests,
+change between environments. Each environment job gets only its own password.
+
+
+Splitting the work - parallelization
+------------------------------------
+
+Smoke is small: one job per environment. For regression and full, the dev tests are split
+into two halves (shards) on two machines, and each machine runs 2 tests at a time
+(Playwright's default: half of the machine's 4 processor cores).
+Staging stays in one job. Why not more: most of the time goes to one slow public server
+(DemoQA), and more tests at the same moment would make it slower and the tests flaky.
+What we noticed about the halves: ci-improvements.txt, part 3.
+
+
+Configuration and secrets - CI vs local
+---------------------------------------
+
+The same tests, two ways to run them (playwright.config.ts, switched by the CI variable):
+
+   local   no retries, the list in the terminal, a trace kept on failure
+   CI      1 retry (a test that passes only on the retry is counted as flaky),
+           test.only forbidden, raw reports for merging, no trace (it would record the
+           login password in a downloadable report) except for the browser test, which
+           logs in to DemoQA only and keeps its trace on failure; a screenshot when the
+           browser test fails
+
+The passwords are never in the code or in the workflow. Locally they come from .env (a
+copy of .env.example, not in git); in CI from the repository secrets
+DUMMYJSON_PASSWORD_DEV and DUMMYJSON_PASSWORD_STAGING.
+Screenshot: screenshots/github-secrets.png
+
+
+Reports and numbers
+-------------------
+
+Each run leaves, per environment:
+   playwright-report-...   the HTML report with a request log for every test   14 days
+   allure-report-...       the Allure report, with the history of earlier runs  14 days
+   results-json-...        the raw numbers                                      14 days
+plus the raw parts of each job (3 days - only the report job needs them).
+
+The Summary page of the run shows a table per environment: tests, passed, known
+deviations, failed, flaky, skipped, the pass rate and the time, and the names of the
+failed and flaky tests. The Allure report keeps the last 30 runs of the same suite and
+environment, so it shows trends: is the pass rate going down, is the same test flaky
+again and again.
+Evidence: reports/2026-10-26-ci-reports-and-shards.txt; the trend of four regression runs
+in the Allure report of run #22: screenshots/allure-regression-run-22-status-dynamics.png
+
+
+When a run is red
+-----------------
+
+The first question is whose problem it is - our test, the set-up of the run, or a server.
+The steps and six real cases: failure-classification.txt.
+What we would change next in this set-up: ci-improvements.txt.

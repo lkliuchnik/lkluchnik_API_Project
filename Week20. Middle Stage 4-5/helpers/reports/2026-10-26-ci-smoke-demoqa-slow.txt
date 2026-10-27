@@ -1,0 +1,141 @@
+Why the first CI run of Stage 5 was red
+=======================================
+
+This is the story of one failed CI run: what went wrong, how we found the reason, and
+what we changed. It is also our first example for the Stage 5 task "analyze a failed
+pipeline run and say what kind of failure it was".
+
+
+The short version
+-----------------
+
+On 26 October we opened the pull request for Stage 5. GitHub ran the quick checks (the
+"smoke" tests) on it, and they came back red.
+
+The reason was not our code. The DemoQA website was very slow that morning - about ten
+times slower than usual. One of our tests talks to DemoQA a lot, so it simply ran out of
+time.
+
+We made the quick check for DemoQA much shorter, so a slow DemoQA no longer turns it red.
+
+Link to the run:
+https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40297804152
+
+
+What we saw
+-----------
+
+Both test jobs were red - the one for "dev" and the one for "staging". The browser test
+was skipped, which is how it should be for quick checks.
+
+Each job ran 6 quick tests. 5 passed. One failed - the DemoQA test where a reader opens
+an account, adds and changes books, and closes the account. Its error was:
+
+   Test timeout of 60000ms exceeded.
+
+In plain words: the test did not finish within its 60 seconds.
+
+It also looked strange that the quick checks took about two and a half minutes. Normally
+they are done in a few seconds. That told us something was waiting, not breaking.
+
+
+How we found the reason
+-----------------------
+
+The CI log needs a GitHub login, so we downloaded the test reports of the run and read
+them. Every test in our project writes down each request it sends and how long the answer
+took. For the failed test, every answer from DemoQA took between about 1 and 14 seconds.
+For example:
+
+   deleting an account        12.7 seconds
+   logging in                 10.4 seconds
+   adding a book               9.9 seconds
+
+Normally each of these takes less than a second (a login sometimes a few seconds).
+
+The test sends about 12 requests to DemoQA one after another. At 5 to 10 seconds each,
+60 seconds are not enough.
+
+To be sure it was DemoQA and not GitHub, we also asked DemoQA from a local computer a few
+minutes later. It was slow there too: the book list took 3 seconds instead of 0.2, and
+deleting an account took 13 seconds. The other two websites we test, DummyJSON and
+PetStore, answered quickly.
+
+
+What kind of failure it was
+---------------------------
+
+We sort failures into three kinds:
+
+   test             something is wrong in our test code or test data
+   environment      a setting of the run is wrong - an address, a password, a token
+   infrastructure   a server or the network is down, overloaded or very slow
+
+This one was infrastructure:
+- only DemoQA tests failed - the tests of the other websites passed in the same run;
+- DemoQA gave correct answers, just very late, on every kind of request;
+- it was slow from GitHub and from a local computer alike;
+- the same test passed in all our earlier runs, when DemoQA was fast.
+
+Not environment: the passwords from GitHub Secrets worked - the test that logs in with
+them passed. Not test: the test is correct for a server that answers in normal time.
+
+One honest note: the 60-second limit is ours. Putting a long test into the quick checks
+made them as slow as the slowest website. That part we could fix.
+
+
+A false alarm we noticed on the way
+-----------------------------------
+
+After each failed try, the report also said "leaked data" - as if the test had left a
+DemoQA account behind. That was not true. The test had already deleted its account just
+before the time ran out. Our clean-up step did not know that and tried to delete it again.
+DemoQA answers "200" when you delete an account that no longer exists, and our clean-up
+read that as "could not delete".
+
+We saw the same false alarm on 23 October. We will fix it later in Stage 5: before saying
+"leaked", the clean-up will first ask DemoQA whether the account still exists.
+
+
+What we changed
+---------------
+
+- The quick check for DemoQA is now a much shorter test: it only opens an account (the
+  clean-up then closes it). That is 3 requests instead of about 12, so it fits into its
+  time even when DemoQA is ten times slower than usual. It still answers the question a
+  quick check should answer: "does DemoQA work?"
+- The long reader test stays in the full regression run, which runs after a merge to main
+  and every night. A full story belongs there, not in the quick checks.
+- The rule for quick checks now says: as few requests as possible.
+
+After the change, the quick checks passed locally in both environments in about 4 seconds.
+
+
+The next run on the pull request
+--------------------------------
+
+We pushed the change, and GitHub ran the quick checks again on the same pull request.
+This time everything was green:
+
+   test (dev)        passed - the quick checks took 25 seconds
+   test (staging)    passed - 22 seconds
+   ui-test (dev)     skipped, as it should be for a pull request
+
+The whole run took 41 seconds (the red one took about 2.5 minutes).
+
+Link: https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40303076727
+Screenshot: ../screenshots/ci-pr-smoke-green-run-10.png
+
+Both runs - the red one and the green one - stay in the history of the pull request, so
+anyone can see the failure, the reason and the fix one after another.
+
+
+What we learned
+---------------
+
+- Read a red run before fixing anything: which step was red, how long it took, which
+  tests failed and which passed.
+- A slow server makes tests fail by time, not by an error code. Writing down how long each
+  request took is what showed us the reason.
+- Quick checks on a pull request should not depend on how fast one public website is.
+  One short test per website is enough to say "it works".

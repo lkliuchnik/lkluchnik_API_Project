@@ -1,0 +1,180 @@
+Schemas: what we check, and how a change is reviewed
+====================================================
+
+This file explains the schema checks of our tests: what they are for, which answers they
+cover, and what we do when an API changes the shape of its answers. It answers two points
+of the Stage 5 task: "document how intended schema changes are reviewed" and "explain when
+a schema update is expected and when it signals a risk".
+
+
+The short version
+-----------------
+
+- A schema is a description of what an answer looks like: which fields it has, what type
+  each one is (a number, a text, a list), and which values are allowed.
+- Our tests check the key answers of all three APIs against such descriptions - 13 checks
+  plus one that watches the PetStore's published contract for changes.
+- New fields in an answer are fine. A field that disappears, changes its type or gets an
+  unexpected value makes the test red - that is the moment to look closer.
+- When a schema check is red, we do not just "make it green". We first decide: is this an
+  intended change we accept, or a risk we report?
+
+
+Why check schemas at all
+------------------------
+
+Most of our tests check values: "the cart total is the sum of the lines", "a weak password
+is refused". A schema check asks a different question: does the answer still have the
+shape a client program expects?
+
+A client - a web page, a mobile app, another service - reads answers by field names and
+types. If "price" suddenly comes as the text "9.99" instead of the number 9.99, or "userId"
+is renamed to "user_id", the client breaks, even though every value is "correct". Value
+tests often miss this, because they look at a few fields only. A schema looks at the shape
+of the whole answer.
+
+
+What is covered
+---------------
+
+   DummyJSON (schemas/dummyjson/)
+      POST /auth/login             a login: two tokens and the user
+      GET  /auth/me                the profile of the logged-in user
+      GET  /products               a page of the catalog
+      POST /carts/add              a cart with its lines and totals
+      GET  /auth/me                must never contain the password - it does (known
+                                   deviation 38, assertion-notes.txt)
+
+   DemoQA (schemas/bookstore/)
+      GET  /BookStore/v1/Books     the catalog: books with an ISBN and their details
+      POST /Account/v1/User        a new account with an empty collection
+      POST /Account/v1/GenerateToken   a token and when it expires
+      GET  /Account/v1/User/{id}   a reader's account with its books
+
+   PetStore (schemas/petstore/swagger.json - the PetStore's own contract)
+      POST /pet, GET /pet/{id}     a Pet
+      GET  /store/order/{id}       an Order
+      GET  /user/{username}        a User
+      an error                     an ApiResponse with all three fields - a stricter
+                                   version of the swagger's (schemas/petstore/error)
+      the contract itself          the live swagger.json is still our pinned copy
+
+The tests: tests/dummyjson/schemas.spec.ts, tests/bookstore/schemas.spec.ts,
+tests/petstore/schemas.spec.ts. The check itself: assertions/schemaAssertions.ts.
+
+In CI: they run in the regression suite (push to main, every night, or by hand). The first
+regression run with them, #22 on 26 October 2026, was green in both environments - also
+the contract check against the live PetStore swagger.
+   Link: https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40328109842
+   Screenshot: screenshots/ci-regression-run-22-schemas.png
+
+Why these: they are the answers the rest of the suite and a real client depend on most -
+logging in, the catalog, the cart, the account. Not covered on purpose: the PetStore list
+of all pets (GET /pet/findByStatus) - it is filled by everybody who uses the public server,
+with any data, so a check there would fail because of other people's pets.
+
+
+Two kinds of schemas
+--------------------
+
+The PetStore publishes its contract (swagger.json). We do not write our own description
+for it - we keep a pinned copy of theirs and check the answers against it. A separate test
+compares our copy with the live one every regression run. If the PetStore changes its
+contract, that test is red, and the report shows exactly what changed (for example a field
+added to Pet, or a number that became a text).
+
+That test ignores the texts written for people - descriptions, summaries, examples. A
+reworded description is not a change of the contract. Everything else is reported, also
+changes we would call expected (a new endpoint, a new field): the contract of a public API
+should not change without anybody noticing, even when the change is harmless.
+
+DummyJSON and DemoQA publish no contract. For them we keep our own "practical" schemas:
+- only the fields our tests and a client rely on, not every field of the answer;
+- each with its type, and for some a range or a format (a price is a number of 0 or more,
+  an ISBN has 10 or 13 digits, a user id is a UUID, a date is a real date);
+- new fields are allowed - an API that adds a field does not break anybody.
+
+Practical means: strict where a change would hurt a client, relaxed where it would not.
+
+One thing we noticed: the PetStore's own contract is weak. Only a Pet has required fields
+(name and photoUrls); in an Order, a User or an error every field is optional, so an empty
+object {} would count as a valid User. A published contract is only as good as what it
+says. For errors this mattered: an HTML error page, which our client turns into
+{ message: "<html>..." }, matched the swagger's error description. So the error check uses
+a stricter version of it (schemas/petstore/error.schema.json) that needs code, type and
+message - and refuses such a page (we checked that on purpose).
+
+Another thing a schema made visible: in DummyJSON the same value has two names. A line of
+a new cart (POST /carts/add) calls the discounted amount "discountedPrice"; the same line
+read back (GET /carts/{id}) calls it "discountedTotal". A client that reads one name
+breaks on the other endpoint. Our cart schema follows the answer of POST /carts/add and
+says so in its description.
+
+
+When a change is expected, and when it is a risk
+------------------------------------------------
+
+Usually expected - no harm to a client:
+- a new field in an answer (that is why our schemas allow extra fields);
+- a new endpoint;
+- a longer or shorter text, a new description in the contract;
+- a field that was optional becomes always present.
+
+A risk - a client can break, or something is wrong:
+- a field disappears or is renamed ("userId" becomes "user_id");
+- a field changes its type (a number becomes a text, a list becomes a single object);
+- a value outside the agreed set (a new "status" a client does not know how to show);
+- a date or id in another format;
+- a field that was always there becomes optional or null;
+- an error answer with a different shape (our error consistency tests watch this too);
+- a field that should never be there appears - a password, a token, internal data. This is
+  a security risk, not just a shape change. DummyJSON's /auth/me does exactly this (38).
+
+A grey zone: a new allowed value (a new order status). Old clients may not know it. We
+treat it as "ask first": accept it when the API announced it, and check that our tests
+and the clients can show it.
+
+
+How a change is reviewed
+------------------------
+
+When a schema test is red:
+
+1. Read what changed. The report lists every place that does not match, for example
+      /products/0/price: must be number
+   or, for the PetStore contract, the part of swagger.json that differs (shown as
+   "Received" = live, "Expected" = our copy).
+
+2. Decide which kind it is, with the list above: expected, a risk, or the grey zone.
+
+3. Find out whether it is intended. For a public API: its changelog, release notes or
+   announcements. For our own team's API: the pull request that changed it. "Nobody knows
+   why" counts as not intended.
+
+4a. Intended and acceptable - update on purpose:
+   - change the schema (or, for the PetStore, refresh the pinned copy: download
+     https://petstore.swagger.io/v2/swagger.json into schemas/petstore/swagger.json);
+   - update the TypeScript models in models/ if a field the tests use changed;
+   - in its own commit, with the reason in the message, for example
+        "Schemas: DummyJSON products get a new field 'brand' (announced in their changelog)";
+   - in the pull request the reviewer sees the change in schemas/ next to the reason.
+
+4b. Not intended, or a risk - do not touch the schema:
+   - report it to the API's owners as a bug, with the failing check and the date;
+   - if it stays, mark the test as a known deviation (test.fail on the declaration, the
+     reason in assertion-notes.txt), so it stays visible and turns red again when fixed.
+
+Never loosen a schema only to make a red test green. A schema is changed because the
+contract changed on purpose - and the commit says why.
+
+
+How to add a schema for a new answer
+------------------------------------
+
+1. Look at the real answer first (one request).
+2. Write schemas/<api>/<name>.schema.json with an "$id" like "dummyjson/cart", the fields
+   the client relies on in "required", their types, and a "description" that says what
+   the answer is.
+3. In a test: await expectSchema(body, 'dummyjson/cart') - right after the status check.
+4. Change the schema on purpose once and watch the test turn red with a readable message,
+   to be sure it really checks something.

@@ -1,0 +1,254 @@
+The AI triage agent (ci-triage)
+===============================
+
+This file tells the story of the AI-tool agent ci-triage: what QA task it helps with, how
+its instructions got better in three versions, how we checked its answers by hand, what
+value it brought, and where it was not enough. It answers the AI points of the Middle
+Stage 5 task (practice tasks 10 to 14).
+
+
+The short version
+-----------------
+
+- The QA task: a CI run is red - whose problem is it? Our test, the set-up of the run
+  (environment), or a server (infrastructure)? And what is the real reason?
+- The agent reads what a red run leaves behind (reports, job logs), the project code, and
+  checks the rest with command-line tools (git, curl, npx playwright). It changes nothing.
+- Three versions of its instructions, each run on the same four red runs whose answers we
+  already knew (three from CI, one made locally for this): 32, 39 and 39 points of 40.
+- Its best moment: it found a real bug in our clean-up code that our own analysis of the
+  same run had missed. We checked it by hand and fixed it.
+- Where it was not enough: a red run whose cause is only in a job log. Without that log
+  it named the right kind but guessed the wrong cause. A person found it in the log.
+
+The files in this folder
+   ai-triage.txt     this file
+   prompt-v1.txt     the instructions, version 1 (the first, simple attempt)
+   prompt-v2.txt     version 2
+   prompt-v3.txt     version 3 - the agent as it is now
+   scores.txt        how each version scored, case by case, and why the next one changed
+   answers/          every answer of the agent, unchanged (14 answers)
+
+
+1. The QA task
+--------------
+
+When a CI run is red, the first question is "whose problem is it?" - and the answer
+decides who acts: we fix a test, we fix the configuration, or we wait for a server and
+run again (failure-classification.txt). Finding that out by hand means downloading the
+reports, unpacking them, reading the error, the request log with its times, comparing
+the environments and the retries, and looking at what changed in the code.
+
+That is a good job for an AI agent: a lot of reading, a fixed way of thinking, and an
+answer that is easy to check.
+
+
+2. How the agent works
+----------------------
+
+What it gets: a folder with what we downloaded from a red run (the HTML report, the JSON
+results, the job logs if we have them) and the project code.
+
+What it does:
+   1. reads the artifacts: the job logs first, then the results and the request log of
+      the failed test;
+   2. checks with command-line tools what the artifacts cannot show (part 5);
+   3. answers in a fixed form: Kind, Confidence, Root cause, Evidence, Checked now,
+      Not checked, Also noticed, Next step.
+
+What it never does: change files, open .env or print a password, or state as a fact
+something it did not see.
+
+Its instructions are prompt-v3.txt. We run it as a separate AI agent with these
+instructions and the folder of one red run. We did not turn it into a command of the AI
+tool or commit any tool settings - the task does not ask for it, and the text of the
+instructions is what matters.
+
+
+3. How we measured it
+---------------------
+
+Four red runs whose answers we already knew - A, B and C are CI runs we had analysed by
+hand before (failure-classification.txt); D we made ourselves for this test, by running
+the smoke suite locally with the staging password variable set to empty, so its cause is
+known by construction:
+
+   A  the first smoke run on the pull request   infrastructure - DemoQA very slow
+   B  run #24                                   test - expected 201, PetStore answers 200
+   C  run #15                                   environment - the browser job could not
+                                                start in Docker (a folder name with spaces)
+   D  a local run without the staging password  environment - a missing secret
+
+Each version ran on all four, every time a fresh agent, which could not open our own
+analyses (helpers/ and docs/). Each answer got 0 to 2 points for five things: the kind,
+the root cause, the evidence, no false or unsafe claims, the next step - 10 per case,
+40 per version. All 14 answers are in answers/, unchanged.
+
+
+4. Three versions - what changed and why
+----------------------------------------
+
+   version 1   32 of 40   67 to 216 s per case
+   version 2   39 of 40   39 to 114 s
+   version 3   39 of 40   81 to 170 s
+
+Version 1 - "find out why the run failed and suggest how to fix it" (4 lines)
+   All four causes were right - but every answer used its own words for the kind (a slow
+   server was "environment", a broken pipeline step "CI/infrastructure"), one answer said
+   the fix "has not been run in CI yet" without any data about later runs (it had been, in
+   run #17), and one opened our local .env file with the passwords. The answers were about
+   45 to 95 lines, each in another shape.
+
+Version 2 - added our three kinds with their definitions, rules (read-only, never .env,
+   facts only from what you saw - the rest under "Not checked"), where to look first, and
+   one answer form with a confidence level.
+   The kind was right everywhere, in our words; nothing unsafe; half the length and twice
+   as fast. But two things were missing: the real bug that version 1 had found was gone
+   (the short form had no place for side findings), and nothing was checked live - case A
+   listed "whether demoqa.com is slow today" under "Not checked", although one command
+   could have answered it.
+
+Version 3 - added command-line checks (part 5), "measured normal speed only", and a
+   place for "Also noticed".
+   The live checks turned guesses into facts (case A: medium to high confidence), and the
+   bug came back, kept apart from the root cause. The score stayed at 39 - version 2 was
+   already at the top for kind, cause and evidence - and a new small mistake appeared
+   (part 8). The price: the commands take time.
+
+The lesson of the iterations: the biggest step was giving the agent our own vocabulary
+and rules (v1 to v2). A stricter form also takes things away - what does not fit the form
+is not reported (v2 lost the bug). And a score only measures what it asks: v3 is clearly
+more useful than v2, with the same number.
+
+Details, case by case: scores.txt.
+
+
+5. Command-line tools
+---------------------
+
+The agent uses the same tools we use in the terminal:
+
+   git            which commit the run used, what changed in the failing files since then
+                  (git log, git show, git diff)
+   curl           how a server answers now - three GET requests, status and time
+   npx playwright run the failed test once more locally, when that is safe (the test
+                  makes and deletes its own data) and when it can prove something
+
+What they showed in version 3:
+   A  curl: DemoQA answers in 0.16 to 0.24 s now; the same test passes locally in 8.7 s -
+      so it really was the server that day, not the test
+   B  the test, fixed in the next commit, passes locally in 2.7 s
+   C  git diff: since the red run, the only change in the workflow is the fix, and it is
+      already on GitHub
+   D  no local run, on purpose: with a missing secret it would prove nothing
+
+We did not use the GitHub command-line tool (gh) or a GitHub MCP server: both need a
+login to GitHub from this computer. The task allows MCP servers or command-line tools; we
+chose the ones above and download the run's files from the GitHub page by hand.
+
+
+6. AI root causes, checked by hand
+----------------------------------
+
+Every answer was compared with what we knew about the run (part 3) - the kind, the cause,
+and each piece of evidence that matters. The cause was right in every version; the kind
+in our own words only from version 2 on (version 1 used its own words, part 4). What the
+agent found, and we confirmed:
+
+   A  infrastructure: DemoQA took about 1 to 14 s per request (0.9 to 14.4 s in the
+      request logs), so the test ran out of its 60 s in step 8
+   B  test: line 17 expects 201, PetStore answers 200
+   C  environment: Docker read "Middle" from the folder name as a container name
+   D  environment: DUMMYJSON_PASSWORD_STAGING not set
+
+A person's own check, 27 October 2026, on the GitHub page of run #24 (job test (dev 1/1),
+step "API tests"), against the agent's answer of version 3 (answers/v3-B-run-24.txt):
+   1. the kind "test" - the server answered normally, our expectation was wrong
+   2. one test failed ("a new pet can be read, changed and deleted"), five passed
+   3. "Expected: 201, Received: 200"
+   4. pets.spec.ts, line 17
+   5. the request log: "POST /pet -> 200", fast
+   6. the same error on Retry #1
+All six matched.
+
+Two claims were checked separately, because acting on them would change something:
+- The bug in the clean-up (part 7): confirmed in the real report and in the code.
+- "the password is on dummyjson.com/docs/auth" (D, version 3): wrong. Checked with curl:
+  that page shows only the password of the dev user.
+
+
+7. The value it brought
+-----------------------
+
+A bug we had missed. In case A (the first smoke run), version 1 noticed that the "leaked
+data" note in the report says "undefined: ..." instead of the id of the account. We had
+analysed that run by hand before and written about the false leak - but not about this.
+
+Why it happened: the clean-up of DemoQA accounts deletes all accounts at the same time and
+then reads their ids again, by position. When a test runs out of time, its body can still
+be running during the clean-up and remove an account from the list. Then the positions no
+longer match: the note names no account, or the wrong one.
+
+Checked by hand: the note in the real report starts with "undefined:", and the code read
+the ids after the wait. Fixed: the clean-up now takes a fixed list of the accounts before
+it starts (fixtures/bookstore.fixture.ts) - the same way the PetStore clean-up already
+did. The code review of this fix found one more, older gap right next to it: an account
+that a still-running test body opens during the clean-up was left behind without any note.
+Now it is reported as "leaked data" too (code-review-stage-5/07-ai-triage-agent.txt,
+S7-3). Checked: the types, and all DemoQA API tests (they all use this clean-up) - see the
+note at the end of this part.
+
+Also:
+- The same three kinds as ours, with evidence and a confidence level - the answer is easy
+  to check and to discuss.
+- One to three minutes per red run, with the live checks included.
+- It says what it could not check - which is exactly where a person has to look.
+
+The check of the fix, 27 October 2026: all DemoQA API tests (tests/bookstore without the
+browser test), environment dev, retries off - 61 of 61 as expected (3.0 minutes after the
+first change, 2.3 minutes after the second). The timeout situation itself was not
+recreated - the real report of the first smoke run shows it; the second change was checked
+once with a temporary test (code-review-stage-5/07-ai-triage-agent.txt, S7-3).
+
+
+8. Where AI was not enough
+--------------------------
+
+Run #15 without its job logs. The job logs of a run are not in the files a run leaves to
+download; you get them separately. We gave the agent (version 3) only the downloadable
+report of run #15 - all 152 tests green - and the project as it was at that run's commit,
+before the fix existed (answers/v3-C3-run-15-at-its-own-time.txt).
+
+What it did well: it saw that the report is green although the run is red, found that the
+browser part is missing, named the right kind (environment) with only medium confidence,
+and asked for the log of the browser job as the first next step.
+
+What it got wrong:
+- the cause: it guessed "a setup step of that new container job" - the user rights
+  inside the container (--user 1001), or the steps that had just been removed (setup-node,
+  the browser install). It ruled out the image itself, after checking with curl that the
+  image exists. The real cause, the folder name with spaces, was not among its guesses.
+- the next step: "fix the ui-test job in the workflow and re-run only the failed jobs". A
+  re-run uses the old commit - the fix would not be in it.
+
+With the project as it is today (answers/v3-C2-run-15-report-only.txt) it did name the
+right cause - but only because the next commit's comment describes the error. That is
+reading the answer, not finding it.
+
+The manual way, as it happened: we opened the browser job in run #15 on GitHub, read
+its log, found "Error response from daemon: No such container: Middle", recognised
+"Middle" as a word of our folder name, and fixed the workflow in a new commit
+(ci-improvements.txt, part 2).
+
+Smaller cases of the same kind:
+- version 3, in case D, said "the password is on dummyjson.com/docs/auth" - wrong
+  (part 6);
+- version 1, in case B, offered as an optional idea "a status-code check to the PetStore
+  client or schema layer" - against a rule of this project (README.txt, part 12:
+  services do not use expect(), the client does not decide what is right or wrong). As
+  an optional extra it did not cost points, but taking it over would have broken a rule.
+
+What we take from it: the agent is only as good as what it is given - always give it the
+job logs of a red run. A "medium" confidence means "go and look", not "probably right".
+And every claim that leads to a change in the code or the settings is checked by a person
+first.

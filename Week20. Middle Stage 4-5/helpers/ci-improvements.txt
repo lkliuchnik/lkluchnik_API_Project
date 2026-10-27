@@ -1,0 +1,219 @@
+How we make the CI run better
+=============================
+
+This file collects what we noticed while running the tests in CI, and what we did about
+it - or why we decided not to change something. It answers the Stage 5 task "suggest
+improvements to test organization in CI". Each idea comes from a real run, with numbers.
+
+
+The short version
+-----------------
+
+   1. A lighter quick check for DemoQA            done   (smoke: ~2.5 min -> 25 s)
+   2. The browser test in a ready-made image      done   (11 min 46 s -> 1 min 20 s)
+   3. Uneven halves when the tests are split      noticed, not changed (yet)
+   4. What we suggest next                        tagging, splitting the suites,
+                                                  when what runs - not done yet
+
+Parts 1-3 are changes and findings from real runs. Part 4 is a list of suggestions for
+the organization of the tests in CI, each with its reason and its price.
+What runs when today, and why: ci-strategy.txt.
+
+
+1. A lighter quick check for DemoQA
+-----------------------------------
+
+What we saw: on the first pull request the quick checks ("smoke") were red. One of them,
+the full DemoQA reader story, needs about 12 requests in a row. DemoQA was slow that
+morning, and the test ran out of its 60 seconds.
+
+What we did: the quick check for DemoQA now only opens an account (the clean-up closes
+it) - 3 requests. The long story stays in the full regression run.
+
+Result: the quick checks take about 25 seconds per environment and no longer depend on
+how fast DemoQA is that day.
+
+More: reports/2026-10-26-ci-smoke-demoqa-slow.txt
+
+
+2. The browser test in a ready-made image
+-----------------------------------------
+
+What we saw: in the first regression run the browser test job took 11 minutes 46 seconds.
+The test itself takes a few seconds. 11 minutes 22 seconds went into one step - installing
+the browser and the system packages it needs, on a fresh GitHub machine, every time.
+
+   run #13, before:   ui-test 11 min 46 s, of it "install the browser" 11 min 22 s
+
+What we did: the job now runs inside Playwright's own Docker image
+(mcr.microsoft.com/playwright:v1.63.0-noble), where the browser is already installed.
+The installing step is gone. This is the way Playwright itself recommends for CI.
+
+One thing to get right: the version of the image has to be the same as the version of
+Playwright in the project - otherwise the browser in the image does not fit. We do not
+write the version into the workflow by hand. The "checks" job reads which Playwright
+version the project uses, and the browser job takes the image of exactly that version. So
+when Playwright is updated one day, the image follows by itself.
+
+The browser job also skips installing Node.js - the image already has it.
+
+What went wrong the first time: the first run in the image (run #15) failed after 47
+seconds, before any test started, with a strange message:
+
+   Error response from daemon: No such container: Middle
+
+"Middle" is a word from our folder name, "Week20. Middle Stage 4-5". Inside a container,
+GitHub starts every step in the job's working folder - and it hands that folder to Docker
+without quotes. Docker split the name at the spaces and took "Middle" for the name of a
+container. Jobs on a plain GitHub machine do not have this problem, so we had never seen
+it before.
+
+The fix: the browser job now starts in the root of the repository (no spaces there) and
+goes into the week folder itself, with the name in quotes. A lesson for later: folder
+names with spaces work almost everywhere, until they suddenly do not.
+
+In our three kinds of failures this one was neither the test nor the website: it was the
+set-up of the run itself - the "environment" kind.
+Screenshot: screenshots/ci-regression-run-15-ui-test-no-such-container.png
+
+Nothing else changed: the API test jobs never needed a browser, and the tests, the
+reports and the numbers are the same.
+
+   run #17, after:    ui-test 1 min 20 s:
+                         starting the image      40 s
+                         npm ci                   2 s
+                         the browser test        29 s
+                      the whole regression run: 4 min 53 s (run #13: 12 min 26 s)
+
+   Link: https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40315958722
+   Screenshot: screenshots/ci-regression-run-17.png
+
+The browser job is no longer the slowest part of the run - the API test halves are
+(about 4 minutes, mostly DemoQA). So the next place to save time is part 3 below.
+
+
+3. Uneven halves when the tests are split
+-----------------------------------------
+
+What we saw: for regression, the dev tests are split into two halves that run on two
+machines at the same time. But the halves were very different:
+
+   run #13:   dev half 1 - 249 seconds of tests
+              dev half 2 -  36 seconds (the whole job)
+
+Why: Playwright splits the tests by count, in the order of the file names. The DemoQA
+files come first in the alphabet - so all 45 slow DemoQA tests landed in the first half,
+and the fast DummyJSON, PetStore and job server tests in the second. Each half has the
+same number of tests, but not the same amount of waiting.
+
+What it means: the split still helps a little (the second half is off the first one's
+plate), but the run is only as fast as its slowest half.
+
+What we could do:
+- Split DemoQA itself over both machines. That would roughly halve the time - but then
+  twice as many tests talk to DemoQA at the same moment (a GitHub machine runs 2 tests at
+  once, so 4 instead of 2). DemoQA is a free public site that was slow on two days this
+  week; more load could make it slower and the tests flaky.
+- Split by API instead of by count: one job for DemoQA, one for everything else. The jobs
+  would still be uneven (DemoQA is simply the slowest site), but it would be clear which
+  job waits for which website - useful when a run is red.
+- Use more machines, for example 4 instead of 2. Each machine gets a quarter of the
+  tests, so the DemoQA tests would spread over the first two machines and the slowest
+  part would get shorter. But that is again more DemoQA tests at the same moment - the
+  same downside as the first idea, plus more machines to pay for in minutes.
+
+Decision for now: no change. The run takes about 4.5 minutes, the time goes to one slow
+public website, and protecting that website from extra load matters more than one or two
+minutes. If the suite grows, splitting by API is the first thing to try.
+
+
+4. What we suggest next
+-----------------------
+
+None of these is done yet. They are ordered by how much we think they would help.
+
+Tagging
+
+- A tag per API: @dummyjson, @demoqa, @petstore, @jobs.
+  Why: today a test belongs to a suite, but CI cannot ask for "only the DemoQA tests".
+  With these tags we could re-run only the API that had an outage, and split the run by
+  API (below). The folders already follow the APIs, so adding the tag is mechanical.
+  Price: one more tag per describe block, and the "every test is in a suite" check in
+  CI would also check that every test has an API tag.
+
+- A "quarantine" tag for a test that turns flaky.
+  Why: a flaky test in regression trains people to ignore red runs. Such a test would
+  get @quarantine and a note with the reason, leave the push-to-main suite, keep running
+  every night, and come back when it is stable again. The Allure history shows which
+  tests are flaky again and again - that is the list to look at.
+  Price: someone has to look at the quarantine list, or it only grows. Today it would be
+  empty: the run summaries we checked (for example run #13) showed 0 flaky tests.
+
+- A "contract" tag for the check that compares the live PetStore swagger with our copy.
+  Why: today it runs on every push to main. If the PetStore changes its contract one
+  day, every push to main turns red, although nothing in our code changed. A contract
+  change is something we review (schema-changes.txt), not something that should block
+  the work. With its own tag it would run every night only.
+  Price: a contract change is noticed within a day, not within the hour.
+
+Splitting the suites
+
+- Split the regression run by API instead of in two halves by count: one job for
+  DemoQA, one for everything else.
+  Why: when a run is red, the job name already says which server it waited for - and
+  DemoQA, the slowest and least stable site, cannot hold up the other APIs' results.
+  Needs the API tags above. More in part 3.
+
+- Staging: smoke on every push to main, the full suite only at night.
+  Why: both environments call the same public servers; what really changes is the test
+  user and the timeouts. The full suite in staging on every push doubles the load on the
+  public sites (DemoQA above all) and finds little that dev does not. Smoke in staging
+  still proves the staging settings and secret work.
+  Price: a problem that shows only in staging (for example its retries) is seen at night,
+  not right after the push.
+
+When what runs
+
+- Make the smoke run a required check for merging into main (a rule on the main branch
+  in the GitHub settings).
+  Why: without such a rule a red pull request can still be merged; the rule makes "smoke
+  on PR" a gate and not only a hint. The rule names the jobs it waits for - since this
+  stage they are called "test (dev 1/1)" and "test (staging 1/1)", so a rule made for the
+  old names "test (dev)" and "test (staging)" would wait forever.
+
+- Let a pull request ask for the full regression run when it touches shared code (the
+  client, the fixtures, the config) - for example with a label, or by running the
+  workflow by hand on the branch, as we did on this branch before the merge.
+  Why: smoke covers one happy path per API; a change in the client can break a negative
+  test that smoke never runs.
+
+- A short health check of the three APIs at the start of the run (one GET each).
+  Why: when a site is down, today we learn it from many red tests and have to work out
+  that it is "infrastructure" (failure-classification.txt). A check that says "DemoQA
+  answered 502" in the first seconds gives the answer before the tests start.
+  Price: one more step; it must only warn, not stop the run - a short outage can be over
+  by the time the tests reach that API.
+
+- A message when the night run is red.
+  Why: nobody watches a run at 02:00. GitHub writes an e-mail only to the person who last
+  changed the schedule line. A message to the team (or an issue opened by the workflow)
+  makes sure a red night is seen in the morning.
+
+Numbers over time
+
+- Publish the Allure report on a web page (for example GitHub Pages) after every run on
+  main and every night.
+  Why: today the history is inside a report you first have to download and unpack. On a
+  page, the pass rate trend and the flaky tests are one click away - and easier to talk
+  about in a meeting.
+
+
+Other small things we noticed
+-----------------------------
+
+- GitHub warns that the actions we use (checkout, setup-node, upload-artifact at v4) run on
+  an older Node.js version and are being moved to a newer one. Nothing breaks today; when
+  newer versions of these actions are out for a while, we update them in one go.
+- The "time" in the run summary is from the first test to the last one, over all parts.
+  In run #13 the dev time (11 min 31 s) included the browser test waiting for its install.
+  With the ready-made image it should now be close to the slowest half.

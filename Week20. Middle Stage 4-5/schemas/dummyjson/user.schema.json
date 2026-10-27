@@ -1,0 +1,14 @@
+{
+  "$id": "dummyjson/user",
+  "description": "GET /auth/me - the profile of the logged-in user. The tests rely on id, username, the names, email and role. New fields are allowed.",
+  "type": "object",
+  "required": ["id", "username", "email", "firstName", "lastName", "role"],
+  "properties": {
+    "id": { "type": "integer" },
+    "username": { "type": "string" },
+    "email": { "type": "string" },
+    "firstName": { "type": "string" },
+    "lastName": { "type": "string" },
+    "role": { "enum": ["admin", "moderator", "user"] }
+  }
+}

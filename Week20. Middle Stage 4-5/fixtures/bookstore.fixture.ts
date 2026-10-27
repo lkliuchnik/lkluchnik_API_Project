@@ -11,6 +11,7 @@ import { Credentials } from '../models/bookstore/account';
 import { Book } from '../models/bookstore/book';
 import { buildCredentials } from '../test-data/bookstore/accountFactory';
 import { HttpStatus } from '../test-data/httpStatus';
+import { setupStep } from './infrastructure';
 
 // All DemoQA BookStore services on one client. A new service is added here - one line.
 function servicesFor(client: ApiClient) {
@@ -40,7 +41,7 @@ export type ReaderAccount = Credentials & { userId: string };
 // readerApi and the cleanup all use ONE token (DemoQA keeps only the newest token anyway).
 export type Reader = ReaderAccount & { session: BookStoreSession };
 
-type AccountCleanup = {
+export type AccountCleanup = {
   remember(account: ReaderAccount, session?: BookStoreSession): void; // close it after the test
   forget(userId: string): void; // the test closed it itself - nothing to clean up
 };
@@ -59,8 +60,8 @@ export const test = base.extend<BookStoreFixtures>({
     await use(bookStoreApi(request, env, apiLog));
   },
 
-  catalog: async ({ bookstore }, use) => {
-    const { status, body } = await bookstore.books.getCatalog();
+  catalog: async ({ bookstore }, use, testInfo) => {
+    const { status, body } = await setupStep(testInfo, 'GET /BookStore/v1/Books', () => bookstore.books.getCatalog());
     expect(status, 'precondition: GET /BookStore/v1/Books').toBe(HttpStatus.OK);
     expect(body.books.length, 'precondition: the catalog has at least 3 books').toBeGreaterThanOrEqual(3);
     await use(body.books);
@@ -71,7 +72,9 @@ export const test = base.extend<BookStoreFixtures>({
   // after a UI login) the auth interceptor gets a new one. If no token can be got at all (an
   // account made by a boundary test), the user name and password are used (Basic auth).
   // All accounts are closed at the same time; one that cannot be closed is marked in the
-  // report as "leaked data".
+  // report as "leaked data" - but only after DemoQA confirms it still exists: on a slow day a
+  // DELETE can work on the server while its answer comes too late, and a second DELETE of a
+  // gone account gets 200 "User Id not correct!" (reports/2026-10-23-staging-demoqa-timeouts.txt).
   accountCleanup: async ({ request, env, apiLog, bookstore }, use, testInfo) => {
     const accounts = new Map<string, { account: ReaderAccount; session: BookStoreSession }>();
     await use({
@@ -83,8 +86,12 @@ export const test = base.extend<BookStoreFixtures>({
       },
     });
 
+    // A fixed list: after a timeout the test body can still run and forget() an account
+    // while the cleanup waits - the results must still match the accounts by position.
+    // An account it remember()s meanwhile is not in this list - see the end of the hook.
+    const toClose = [...accounts.values()];
     const results = await Promise.allSettled(
-      [...accounts.values()].map(async ({ account, session }) => {
+      toClose.map(async ({ account, session }) => {
         let byToken: string; // what the token way gave, for the report if both ways fail
         try {
           const { status } = await bookStoreApi(request, env, apiLog, session).account.delete(account.userId);
@@ -94,25 +101,65 @@ export const test = base.extend<BookStoreFixtures>({
           byToken = (error as Error).message; // no token could be got - try the password below
         }
 
-        const { status } = await bookstore.account.deleteWithPassword(account.userId, account);
-        if (status !== HttpStatus.NO_CONTENT) {
-          throw new Error(`with the token: ${byToken}; with the password: DELETE answered ${status}`);
+        let byPassword: string; // what the password way gave
+        try {
+          const { status } = await bookstore.account.deleteWithPassword(account.userId, account);
+          if (status === HttpStatus.NO_CONTENT) return;
+          byPassword = `DELETE answered ${status}`;
+        } catch (error) {
+          byPassword = error instanceof Error ? error.message : String(error);
         }
+        const tried = `with the token: ${byToken}; with the password: ${byPassword}`;
+
+        // Neither way gave a clear "deleted" - does the account still exist? POST
+        // /Account/v1/Authorized with the account's own name and password: 200 (true or
+        // false) = it exists; 404 "User not found!" = it is gone. (404 also comes for a wrong
+        // password - but these are the name and password the account was created with.)
+        let lookup: number;
+        try {
+          lookup = (await bookstore.account.isAuthorized(account)).status;
+        } catch (error) {
+          throw new Error(`${tried}; could not check whether it still exists: ${(error as Error).message}`);
+        }
+        if (lookup === HttpStatus.NOT_FOUND) {
+          testInfo.annotations.push({
+            type: 'cleanup note',
+            description:
+              `${account.userId}: no clear "deleted" (${tried}), ` + 'but the account no longer exists - not leaked',
+          });
+          return;
+        }
+        const state = lookup === HttpStatus.OK ? 'the account still exists' : `the check answered ${lookup}`;
+        throw new Error(`${tried}; ${state}`);
       }),
     );
     results.forEach((result, i) => {
       if (result.status === 'rejected') {
-        const userId = [...accounts.keys()][i];
+        const { userId } = toClose[i].account;
         testInfo.annotations.push({ type: 'leaked data', description: `${userId}: ${result.reason}` });
       }
     });
+
+    // Opened by a test body that ran on after a timeout, while the cleanup was running: not
+    // closed - but never silently missing from the report.
+    const listed = new Set(toClose.map(({ account }) => account.userId));
+    for (const userId of accounts.keys()) {
+      if (!listed.has(userId)) {
+        testInfo.annotations.push({
+          type: 'leaked data',
+          description: `${userId}: opened after the cleanup had started - not closed`,
+        });
+      }
+    }
   },
 
   // Seeded data that really exists on the server: new readers with empty collections.
-  newReader: async ({ bookstore, accountCleanup }, use) => {
+  newReader: async ({ bookstore, accountCleanup }, use, testInfo) => {
     await use(async () => {
       const credentials = buildCredentials();
-      const { status, body } = await bookstore.account.create(credentials);
+      const { status, body } = await setupStep(testInfo, 'POST /Account/v1/User', () =>
+        bookstore.account.create(credentials),
+      );
       expect(status, 'precondition: POST /Account/v1/User').toBe(HttpStatus.CREATED);
 
       const account = { ...credentials, userId: body.userID };

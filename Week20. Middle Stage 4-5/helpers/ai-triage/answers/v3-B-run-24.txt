@@ -1,0 +1,39 @@
+ci-triage v3 - case B (run #24) - the agent's answer, unchanged
+Agent run: 81 s, 8 tool calls, about 47 000 tokens
+
+Kind:          test
+Confidence:    high. The server answered normally, both tries failed the same way, the
+               commit itself says the mistake was deliberate, and the fixed test passes
+               locally now.
+Root cause:    pets.spec.ts:17 expected 201 Created after POST /pet (HttpStatus.CREATED),
+               but the PetStore answers 200. The run used the PR merge of commit 6c61e48,
+               the "Deliberate test mistake" commit; the server did nothing wrong.
+Evidence:
+  - results.json stats: 5 expected, 1 unexpected, 0 flaky. The only failure is
+    petstore/pets.spec.ts:9 "a new pet can be read, changed and deleted".
+  - results.json error (both tries, 283 ms and 264 ms): "Expected: 201, Received: 200" at
+    pets.spec.ts:17:20. The code frame shows the comment "DELIBERATE MISTAKE ... the
+    PetStore answers 200. Reverted in the next commit."
+  - api-log attachment: POST /pet -> 200 (231 ms / 187 ms) and DELETE /pet/{id} -> 200
+    (43 ms / 48 ms). These are normal statuses and normal speed, and the test data was
+    cleaned up.
+  - results.json metadata: commit c46ba0e = "Merge 6c61e48... into 568cb44" (PR #1),
+    TEST_ENV dev.
+  - git log 6c61e48..HEAD -- tests/petstore/pets.spec.ts: one later commit, ad821fa
+    "Revert the deliberate test mistake". It changes line 17 back to
+    expect(status).toBe(HttpStatus.OK).
+Checked now:
+  - git cat-file c46ba0e: this merge commit is not in the local repo (GitHub made it), so
+    I compared from the PR head 6c61e48. git log and git show ad821fa confirmed the revert.
+  - TEST_ENV=dev npx playwright test tests/petstore/pets.spec.ts -g "a new pet can be
+    read, changed and deleted" --retries=0 --reporter=line: 1 passed (2.7 s) on the
+    current code. It was safe to run because the test makes its own pet and deletes it.
+  - No curl: nothing points to infrastructure (fast 200 answers, other tests of the run
+    passed).
+Not checked:   I had no job logs, so the other job steps and the summary/annotations of
+               run 40331114534 were not seen. I also did not check that a CI run on
+               ad821fa (or later) is green.
+Also noticed:  nothing.
+Next step:     No fix is needed: ad821fa already reverts the mistake. Make sure ad821fa
+               (or later) is pushed to PR #1 and that the next week20 smoke-dev run is
+               green. Record run 24 as a "test" kind example.

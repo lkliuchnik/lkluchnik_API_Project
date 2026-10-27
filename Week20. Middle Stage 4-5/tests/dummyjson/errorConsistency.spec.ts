@@ -4,6 +4,7 @@ import { Environment } from '../../config/environments';
 import { ApiResponse } from '../../models/common';
 import { NON_EXISTENT_ID } from '../../test-data/dummyjson/constants';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Error consistency: every DummyJSON endpoint answers an error the same way -
 // a JSON body of exactly { message } (expectDummyJsonError). Different endpoints,
@@ -55,7 +56,7 @@ const cases: ErrorCase[] = [
   },
 ];
 
-test.describe('DummyJSON errors have one shape on every endpoint', () => {
+test.describe('DummyJSON errors have one shape on every endpoint', { tag: Tag.REGRESSION }, () => {
   for (const c of cases) {
     test(`${c.title}: ${c.status} with { message }`, async ({ api, env }) => {
       const response = await c.send(api, env);

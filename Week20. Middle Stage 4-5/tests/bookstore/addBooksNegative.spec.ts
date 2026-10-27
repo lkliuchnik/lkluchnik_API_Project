@@ -2,6 +2,7 @@ import { test, expect, BookStoreApi } from '../../fixtures/bookstore.fixture';
 import { expectBookStoreError } from '../../assertions/bookstore/errorAssertions';
 import { UNKNOWN_ISBN } from '../../test-data/bookstore/constants';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Negative tests for ONE endpoint, POST /BookStore/v1/Books (add books to a collection),
 // in five categories. A correct "no" is 400 (401 for a missing login) with a JSON body
@@ -14,7 +15,7 @@ async function isbnsOf(api: BookStoreApi, userId: string) {
   return body.books.map((book) => book.isbn);
 }
 
-test.describe('POST /BookStore/v1/Books - 1. missing fields', () => {
+test.describe('POST /BookStore/v1/Books - 1. missing fields', { tag: Tag.REGRESSION }, () => {
   // known deviation: DemoQA answers 500 with an HTML error page
   test.fail('without userId the request is rejected with 400', async ({ readerApi, catalog }) => {
     const response = await readerApi.books.addBooksRaw({ collectionOfIsbns: [{ isbn: catalog[0].isbn }] });
@@ -47,7 +48,7 @@ test.describe('POST /BookStore/v1/Books - 1. missing fields', () => {
   });
 });
 
-test.describe('POST /BookStore/v1/Books - 2. invalid format', () => {
+test.describe('POST /BookStore/v1/Books - 2. invalid format', { tag: Tag.REGRESSION }, () => {
   // known deviation: DemoQA answers 401 code 1207 "User Id not correct!" - a format error is not a login error
   test.fail('a userId that is not a GUID is rejected with 400', async ({ readerApi, catalog }) => {
     const response = await readerApi.books.addBooks('not-a-guid', [catalog[0].isbn]);
@@ -81,7 +82,7 @@ test.describe('POST /BookStore/v1/Books - 2. invalid format', () => {
   });
 });
 
-test.describe('POST /BookStore/v1/Books - 3. unauthorized access', () => {
+test.describe('POST /BookStore/v1/Books - 3. unauthorized access', { tag: Tag.REGRESSION }, () => {
   // another reader's token on this reader's collection: businessRules.spec.ts
   test('without a token nothing is added', async ({ reader, readerApi, bookstore, catalog }) => {
     const response = await bookstore.books.addBooks(reader.userId, [catalog[0].isbn]);
@@ -106,7 +107,7 @@ test.describe('POST /BookStore/v1/Books - 3. unauthorized access', () => {
   });
 });
 
-test.describe('POST /BookStore/v1/Books - 4. business rule violations', () => {
+test.describe('POST /BookStore/v1/Books - 4. business rule violations', { tag: Tag.REGRESSION }, () => {
   test('only books from the catalog can be added', async ({ reader, readerApi }) => {
     const response = await readerApi.books.addBooks(reader.userId, [UNKNOWN_ISBN]);
 
@@ -135,7 +136,7 @@ test.describe('POST /BookStore/v1/Books - 4. business rule violations', () => {
   });
 });
 
-test.describe('POST /BookStore/v1/Books - 5. duplicate data', () => {
+test.describe('POST /BookStore/v1/Books - 5. duplicate data', { tag: Tag.REGRESSION }, () => {
   test('a book can be in a collection only once', async ({ reader, readerApi, catalog }) => {
     const { isbn } = catalog[0];
     const { status: firstStatus } = await readerApi.books.addBooks(reader.userId, [isbn]);

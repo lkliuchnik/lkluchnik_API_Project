@@ -32,6 +32,9 @@ In this folder:
    npm ci                              install the packages (once)
    npx playwright install chromium     install the browser for the one API + UI test
                                        (once)
+   cp .env.example .env                make your local settings (once), then fill in the
+                                       two DummyJSON passwords - see part 4
+   npm run test:smoke                  6 tests: is everything up? (about 20 s)
    npx playwright test                 run all tests in the dev environment
 
 A full run takes about 3 minutes: one test waits a real minute for a token to expire.
@@ -100,6 +103,19 @@ Shared by all APIs
    models/common.ts            ApiResponse<T> and other shapes all APIs share
    test-data/httpStatus.ts     status codes with names
    fixtures/base.fixture.ts    env and the request log
+   config/tags.ts              the suite tags (smoke, regression, slow, ui)
+
+Schemas (what an answer looks like - helpers/schema-changes.txt)
+   schemas/petstore/swagger.json   a pinned copy of the PetStore's own contract
+   schemas/dummyjson/, bookstore/  our practical schemas, one JSON file per answer
+   assertions/schemaAssertions.ts  expectSchema(body, 'dummyjson/cart') - the check
+
+Reports (used by CI)
+   merge.config.ts             how CI glues the parts of a run into one HTML report and
+                               one JSON file
+   allurerc.mjs                the Allure report settings, with the run history
+   scripts/ci-summary.js       turns the JSON file into the numbers on the run's Summary
+                               page
 
 One folder per API inside each layer
 
@@ -212,8 +228,25 @@ Choose one when you run the tests:
 
    TEST_ENV=staging npx playwright test        (dev is the default)
 
-One value can be changed without touching the file, with a variable in .env or in CI:
-DUMMYJSON_URL, DUMMYJSON_USERNAME, DUMMYJSON_PASSWORD, BOOKSTORE_URL, PETSTORE_URL.
+Secrets are not in the code. The DummyJSON password of each environment comes from a
+variable: DUMMYJSON_PASSWORD_DEV and DUMMYJSON_PASSWORD_STAGING.
+   locally   in the file .env (copy .env.example, fill it in; .env is never committed)
+   in CI     GitHub Secrets with the same names (Settings > Secrets and variables >
+             Actions); the workflow passes them to the tests
+The password is read only when a test logs in to DummyJSON. If it is missing, every
+DummyJSON test fails with the same clear message, and the tests of the other APIs still run:
+   DUMMYJSON_PASSWORD_DEV is not set. Locally: copy .env.example to .env ...
+The DummyJSON user is fixed per environment and cannot be overridden - a user without its
+own password would only fail to log in.
+
+Other values can be changed without touching the file, with a variable in .env or in CI:
+DUMMYJSON_URL, BOOKSTORE_URL, PETSTORE_URL.
+
+Local run vs CI run (playwright.config.ts, switched by the CI variable):
+   local     no retries, list reporter, a trace is kept for a failed test
+   CI        1 retry (a test that passes only then is "flaky"), HTML report, test.only
+             forbidden, no trace (it would record the login password) - except for
+             the UI test, which keeps its trace and gets a screenshot when it fails
 
 A wrong name stops the run with a clear message:
    Unknown TEST_ENV "prod". Use one of: dev, staging
@@ -257,11 +290,18 @@ From fixtures/bookstore.fixture.ts:
    accountCleanup     closes every account after the test, also when the test fails.
                       First with the account's token; if that does not give 204, or no
                       token can be got (an account made by a boundary test can never log
-                      in), with the user name and password (Basic auth). An account it
-                      could not close is marked in the report as "leaked data", with
-                      what both ways answered.
+                      in), with the user name and password (Basic auth). If neither
+                      way gives a clear "deleted", it asks DemoQA whether the account
+                      still exists: gone = a "cleanup note", still there = "leaked data"
+                      with what both ways answered. An account opened while the cleanup
+                      already runs (a test body that ran on after a timeout) is not
+                      closed, but marked as "leaked data" too.
                       A test that opens an account itself calls remember(), and forget()
                       if it closed the account on its own.
+
+The setup steps of these fixtures (the catalog, a new reader, a new pet) skip the test
+with the reason "infrastructure: ..." when the server answers 502, 503, 504 or not at all
+(fixtures/infrastructure.ts) - an outage is shown as what it is, not as a failed test.
 
 From fixtures/petstore.fixture.ts (new in Stage 4):
    petstore           PetStore services (no login - the public server needs none)
@@ -404,6 +444,11 @@ In this folder:
    npm ci                                install the packages
    npx tsc --noEmit                      check the types
    npx playwright test                   all tests, environment dev
+   npm run test:smoke                    the smoke suite (tag @smoke, 6 tests)
+   npm run test:regression               the regression suite (tag @regression - all
+                                         tests except the 1-minute token test)
+   npm run test:full                     everything
+   npm run test:smoke -- --grep-invert @ui   a suite without the browser test (as in CI)
    TEST_ENV=staging npx playwright test  all tests, environment staging
    npx playwright test tests/petstore    one folder
    npx playwright test --grep-invert @ui only the API tests
@@ -413,13 +458,41 @@ In this folder:
                                          one file three times - before a commit
    npx playwright test --reporter=html   all tests, with the HTML report
    npm run test:report                   open that HTML report
+   CI=1 npm run test:smoke               a run like CI: it also writes the raw Allure
+                                         results (allure-results/)
+   npm run allure:report                 build the Allure report from them and open it
 
 On Windows PowerShell: $env:TEST_ENV="staging"; npx playwright test
 
 CI (.github/workflows/week20-middle4-5.yml) runs the API tests in dev and staging, and
-the API + UI test in its own job (ui-test), on every push or pull request to main that
-changes this folder or the workflow, and on demand (workflow_dispatch). In CI a failed
-test is retried once.
+the API + UI test in its own job (ui-test). Which suite runs depends on what started it:
+   pull request to main   smoke         (no UI job)
+   push to main           regression    + the UI job
+   every night 02:00 UTC  full          + the UI job
+   by hand (Run workflow) the suite you choose
+In CI a failed test is retried once.
+
+How a CI run is built - think of it as four groups of jobs, one after another:
+
+   checks     a quick look before anything else: do the types compile, does every test
+              have a suite tag, and which tests does this run need. If this fails,
+              nothing else starts - no point in running tests on broken code.
+   test       the API tests themselves - one job per environment. For regression and
+              the night run, the dev tests are split in two halves ("shards") that run
+              on two machines at the same time, so the run finishes sooner.
+   ui-test    the browser test, at the same time as the API tests (not for smoke). It
+              runs inside Playwright's ready-made Docker image, so no time goes into
+              installing a browser (ci-improvements.txt, part 2).
+   report     one per environment, after all tests are done - also when some failed.
+              It glues the halves together and produces what you download from the run:
+                 playwright-report-...   the HTML report (open index.html)
+                 allure-report-...       the Allure report, with charts of the last runs
+                 results-json-...        the raw numbers (used later by the AI triage)
+              It also writes a small table into the run's Summary page: how many tests
+              passed, failed, were flaky, and the pass rate.
+
+The Allure report remembers the earlier runs of the same suite and environment, so it can
+show trends - is the pass rate going down, which tests are flaky again and again.
 
 
 12. Rules we keep
@@ -450,7 +523,13 @@ test is retried once.
 - Limits that depend on data are read from the API, not written into the test.
 - Only add a shared helper when it is a real rule used by several tests. Two similar
   lines are not a reason for a helper.
-- A test that needs a browser gets the tag @ui; a test that waits a long time gets @slow.
+- Every test has a suite tag, from config/tags.ts (never the plain text): a describe
+  block gets Tag.REGRESSION; a test that also belongs to smoke adds Tag.SMOKE; a test
+  that waits a long time gets Tag.SLOW (and no REGRESSION); a test that needs a browser
+  gets Tag.UI.
+- Smoke stays small: one or two happy paths per API, no test.fail, under a minute. CI
+  fails when a test has neither Tag.REGRESSION nor Tag.SLOW (step "Every test is in a
+  suite"), so a forgotten tag cannot silently drop a test from regression.
 - API + UI tests: prepare the data through the API FIRST, then log in through the UI.
 
 

@@ -6,6 +6,7 @@ import { loggingInterceptor } from '../../api/interceptors/logging';
 import { retryInterceptor } from '../../api/interceptors/retry';
 import { AuthService } from '../../services/dummyjson/AuthService';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // These tests build their own small clients with fixed settings, so the result does not
 // depend on the environment (dev has no retries, staging has 2). Each test shows which
@@ -17,7 +18,7 @@ function makeClient(request: APIRequestContext, baseUrl: string, interceptors: I
   return new ApiClient(request, { baseUrl, interceptors });
 }
 
-test.describe('Retry interceptor', () => {
+test.describe('Retry interceptor', { tag: Tag.REGRESSION }, () => {
   test('a GET that keeps getting 503 is sent 3 times (1 + 2 retries), then the 503 is returned', async ({
     request,
     env,
@@ -105,7 +106,7 @@ test.describe('Retry interceptor', () => {
   });
 });
 
-test.describe('Auth interceptor', () => {
+test.describe('Auth interceptor', { tag: Tag.REGRESSION }, () => {
   test('adds the token: GET /auth/me works without passing a token', async ({ request, env, session }) => {
     const log: string[] = [];
     const client = makeClient(request, env.dummyjson.baseUrl, [
@@ -172,7 +173,7 @@ test.describe('Auth interceptor', () => {
   });
 });
 
-test.describe('Logging interceptor', () => {
+test.describe('Logging interceptor', { tag: Tag.REGRESSION }, () => {
   test('writes the method, the path with its query, the status and the time', async ({ request, env }) => {
     const log: string[] = [];
     const client = makeClient(request, env.dummyjson.baseUrl, [loggingInterceptor((l) => log.push(l))]);

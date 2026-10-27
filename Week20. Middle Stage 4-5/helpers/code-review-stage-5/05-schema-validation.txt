@@ -1,0 +1,73 @@
+Code review - step 4: schema validation
+=======================================
+
+One iteration of the Middle Stage 5 code review (26 October 2026). How a review is done, and
+the list of all iterations: 00-read-me-first.txt in this folder.
+
+
+What the step added, in plain words: the key answers of all three APIs are checked against
+a description of their shape (a schema): 13 checks, plus one that watches the PetStore's
+published contract for changes. How a schema change is reviewed: schema-changes.txt.
+
+Before the review - two mistakes of our own, caught by checking WHY a test failed:
+   - A link from one schema to another was written the wrong way ("bookstore/book" inside a
+     schema called "bookstore/books" means "bookstore/bookstore/book"). Two DemoQA checks
+     failed with "can't resolve reference" - easy to see.
+   - The same mistake in the password schema was harder: that test is marked test.fail, so
+     it "failed as expected" - but for the wrong reason. Only reading the reason showed it.
+     After the fix the reason is exactly "/password: must NOT be valid". This is why we
+     always look at the reason of an expected failure, not only at its colour.
+
+S5-1. The password check could fail for another reason
+   Found:     the "no password" schema also contained the whole profile schema. If DummyJSON
+              one day stopped sending the password but renamed another field, the test would
+              still "fail as expected", and nobody would see that the password issue is gone.
+   Decision:  fixed. That schema now checks one thing only: the password field must not be
+              there. The rest of the profile has its own check.
+
+S5-2. The contract check would also go red for a new description text
+   Found:     the code said "texts do not count", but compared everything, texts included.
+   Decision:  fixed. Descriptions, summaries and examples are left out of the comparison.
+              Checked both ways: a changed description passes, a number turned into a text
+              is reported with the exact place.
+
+S5-3. The cart schema did not check the money fields of a line
+   Found:     the reviewer thought "discountedPrice" was not sent any more. Checked live:
+              POST /carts/add sends it - but GET /carts/{id} calls the same value
+              "discountedTotal". One value, two names in one API.
+   Decision:  fixed. The line now requires the discount percentage and the discounted
+              price; the two names are described in schema-changes.txt.
+
+S5-4. The PetStore error check let almost anything through
+   Found:     the swagger's error object has no required fields. An HTML error page, which
+              our client turns into { message }, matched it.
+   Decision:  fixed. The error check uses a stricter schema (petstore/error): code, type and
+              message must all be there. Checked: the HTML-page case is now refused.
+
+S5-5. "POST /pet answers a Pet" was not checked
+   Found:     the title said POST and GET, but only the GET answer was checked.
+   Decision:  fixed. The test creates the pet itself and checks both answers.
+
+S5-6. A schema in a new folder would not be loaded
+   Found:     the loader read only two folders by name, although the comment said "a new
+              file is available at once".
+   Decision:  fixed. Every folder under schemas/ is read.
+
+S5-7. Read right after write on the shared PetStore could be flaky
+   Found:     the Order and User checks read the data right after creating it.
+   Decision:  not changed. We checked this in Stage 4 (6 of 6 live tries) and the same
+              pattern ran in every run since - three clean runs of 154 tests, the date
+              tests, the regression runs in CI - without one such failure. If it ever shows
+              up, the CI retry marks it as flaky and we will see it.
+
+S5-8. The pinned swagger was read in two places
+   Decision:  fixed. It is read once (assertions/schemaAssertions.ts) and the contract test
+              uses the same copy.
+
+How it was checked
+   - Live first: the shapes of the key answers were read from the real APIs.
+   - The schema tests 3 times in a row, retries off: 42 of 42 as expected, no leaked data.
+   - On purpose, then put back: a wrong type in a schema - red with "/products/0/price:
+     must be string"; a field missing in the pinned swagger - red, showing that field;
+     a changed description - green; an HTML-page error - refused by the strict schema.
+   - tsc clean; every test has a suite tag.

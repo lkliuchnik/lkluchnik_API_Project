@@ -1,0 +1,63 @@
+ci-triage v3 - case A (the first smoke run, 40297804152) - the agent's answer, unchanged
+Agent run: 170 s, 16 tool calls, about 68 000 tokens
+
+Kind:          infrastructure
+Confidence:    high. In both environments and on both attempts, every DemoQA request took
+               0.9 to 14.4 s, and the server answered normally every time (no wrong
+               status). Measured now, DemoQA answers in about 0.2 s and the same test
+               passes locally in 8.7 s.
+Root cause:    DemoQA (demoqa.com) was very slow during the run. Each of the roughly 12
+               requests in the 9-step readerJourney test took several seconds, so the test
+               ran past the 60 s test timeout during step 8 (DELETE account). This
+               happened in the dev and staging jobs, on the first try and on the retry.
+Evidence:
+- report.json inside both index.html files (dev, staging): 6 tests, 5 expected,
+  1 unexpected. The failure is readerJourney.spec.ts "a reader opens an account...". Both
+  attempts end "timedOut" with "Test timeout of 60000ms exceeded". Commit 315af02 is a
+  GitHub merge of bc4bc6d.
+- api-log attachment (dev, retry 0): every request got 200/201/204, but slowly: GET /Books
+  took 6733 ms, POST /User 6057 ms, GenerateToken 7950 ms, POST /Books 9875 ms and DELETE
+  /User 12708 ms. Staging and the retries look the same (906 to 14413 ms per request).
+- Step timings (dev, retry 0): Before Hooks 6.7 s plus steps 1-7 add up to about 56.5 s.
+  Step 8's DELETE took 12.7 s, so the 60 s limit ran out inside step 8.
+- Second error, "GenerateToken - no response: Request context disposed" (ApiClient.ts:96):
+  step 9 was still running after Playwright had already torn down the request fixture.
+  This is a result of the timeout, not a separate problem.
+- Other tests in the same run (other servers): petstore 56-208 ms, dummyjson 126-229 ms,
+  so the runner and its network were fine. Only DemoQA was slow.
+- playwright.config.ts:37: timeout 60_000. At bc4bc6d this test had tag [REGRESSION,
+  SMOKE], so it ran in the PR smoke suite.
+Checked now:
+- curl GET https://demoqa.com/BookStore/v1/Books, 3 times: 200 in 0.24 s, 0.16 s and
+  0.16 s. DemoQA is fast again.
+- TEST_ENV=dev npx playwright test tests/bookstore/readerJourney.spec.ts -g "a reader opens
+  an account" --retries=0 --reporter=line: 1 passed (8.7 s). This is safe to run: the
+  test opens and closes its own account. No project files changed (git status is the same
+  before and after).
+- git log bc4bc6d..HEAD on these files: 88f2f92 "Lighter DemoQA smoke test after a slow CI
+  run" took the SMOKE tag off readerJourney. The DemoQA smoke test is now accountBoundaries
+  "the minimum: 8 characters" (3 requests).
+Not checked:
+- No job logs were given, so I could not check the GitHub job steps or how long the jobs
+  took.
+- How fast DemoQA was for other runs around 09:12-09:15 UTC on 2026-10-26.
+- Whether the PR has been run again since 88f2f92.
+Also noticed:
+- The "leaked data" note in this run is a false alarm. In the api-log, step 8's DELETE
+  /User answered 204, so the account was closed. The cleanup ran while step 8 was still
+  waiting for its answer, then tried to log in to an account that was already gone ("User
+  authorization failed"), and its password DELETE got 200. HEAD now first checks whether
+  the account still exists (fixtures/bookstore.fixture.ts:110-127), so the same situation
+  would now give a "cleanup note" instead.
+- fixtures/bookstore.fixture.ts:132-135 is still a real bug at HEAD. It finds the userId
+  by position with [...accounts.keys()][i] only after allSettled has finished. If forget()
+  runs in between (the abandoned test body continues during teardown, as in this run), the
+  map is shorter by then. The note then says "undefined:", as in both reports here, or it
+  can name the wrong account. Fix: keep the userId together with each promise, or read the
+  keys before the map(...).
+Next step:
+- Run the PR checks again on the current branch head (88f2f92 or later). The smoke suite
+  no longer contains the long DemoQA journey, and DemoQA is fast again.
+- Treat this red run as an external slowdown. Do not change the test timeout or expected
+  values because of it.
+- Optionally fix the userId label in accountCleanup (bookstore.fixture.ts:132-135).

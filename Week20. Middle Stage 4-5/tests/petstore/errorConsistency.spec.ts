@@ -4,6 +4,7 @@ import { ApiResponse } from '../../models/common';
 import { PetStoreMessage } from '../../models/petstore/message';
 import { uniqueId } from '../../test-data/petstore/petFactory';
 import { HttpStatus } from '../../test-data/httpStatus';
+import { Tag } from '../../config/tags';
 
 // Error consistency: the PetStore swagger describes one error object for all endpoints -
 // { code, type, message } (expectPetStoreError). The tests check it on pets, users and
@@ -49,7 +50,7 @@ const deviations: ErrorCase[] = [
   },
 ];
 
-test.describe('PetStore errors have one shape on every endpoint', () => {
+test.describe('PetStore errors have one shape on every endpoint', { tag: Tag.REGRESSION }, () => {
   for (const c of cases) {
     test(`${c.title}: ${c.status} with { code, type, message }`, async ({ petstore }) => {
       await expectPetStoreError(await c.send(petstore), { status: c.status });

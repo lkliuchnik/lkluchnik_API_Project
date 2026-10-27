@@ -1,0 +1,39 @@
+ci-triage v2 - case C (run #15) - the agent's answer, unchanged
+Agent run: 72 s, 10 tool calls, about 65 000 tokens
+
+Kind:         environment
+Confidence:   high. Every API test passed, and only one job has an error: ui-test stopped
+              at its first run step, before any test ran, with a Docker error about the
+              folder path.
+Root cause:   The pipeline itself is wrong. In run-15 (commit 761189e) the ui-test job runs
+              in a container, and it took the workflow's default working directory
+              "Week20. Middle Stage 4-5". GitHub passed that path to docker exec without
+              quotes, so Docker read "Middle" as a container name and npm ci never
+              started. The server and the tests had no part in it.
+Evidence:
+  - logs 5_ui-test (dev).txt: "Run npm ci" is followed by "Error response from daemon: No
+    such container: Middle", then "##[error]Process completed with exit code 1". The
+    blob-report and allure-results uploads then found no files. This is the only ##[error]
+    in all 7 job logs.
+  - workflow at 761189e (.github/workflows/week20-middle4-5.yml): the top-level
+    defaults.run.working-directory: "Week20. Middle Stage 4-5", and the ui-test job has
+    container: mcr.microsoft.com/playwright:v...-noble. That job does not override the
+    working directory.
+  - results.json (dev, regression): stats are expected 152, unexpected 0, flaky 0. The 36
+    entries with status "failed" all have expectedStatus "failed", so they are test.fail
+    known deviations, not failures.
+  - logs 3_test (dev 1_2).txt / 2_test (dev 2_2).txt / 4_test (staging 1_1).txt:
+    "76 passed", "76 passed", "152 passed". report (dev) and report (staging) uploaded
+    their results with no errors.
+  - logs 6_checks.txt: "Error: No tests found" comes from the untagged-test check
+    (--grep-invert "@regression|@slow"). That is the normal result when every test has a
+    tag, and the step did not fail.
+  - local git history: a later commit, 85636bb "Browser test job: start outside the folder
+    with spaces", sets working-directory: . for ui-test and runs cd "Week20. Middle Stage
+    4-5" && npm ci / ... && npx playwright test --grep @ui.
+Not checked:  whether 85636bb has been pushed and whether a run on it got ui-test green. I
+              only had run-15. I also could not see whether the UI test itself passes
+              inside the Playwright image, because it never ran here.
+Next step:    Make sure 85636bb is pushed, then re-run the regression workflow. Check that
+              ui-test (dev) gets past npm ci and actually runs the @ui test. Keep run-15 as
+              a pipeline/environment case: the API results in it are valid.
