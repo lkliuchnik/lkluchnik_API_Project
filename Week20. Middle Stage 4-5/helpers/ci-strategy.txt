@@ -47,6 +47,8 @@ On a push to main - regression (everything except the slow test)
    Real runs (started by hand on the branch, the same suite): #13, #17, #20, #22 - green.
    Since the browser test runs in a ready image, about 5 minutes (#17: 4 min 53 s, #20:
    5 min 10 s); before it, 12 min 26 s (#13).
+   The first real push to main - the merge of the pull request: run #31, green in
+   6 min 2 s (screenshots/ci-main-merge-run-31.png).
 
 Every night - full (everything)
    The night run adds the test that waits a real minute for a token to expire - too slow
@@ -56,6 +58,13 @@ Every night - full (everything)
    after this branch is merged.
    The same suite, started by hand on the branch before the merge: run #29, green in
    6 min 38 s - 180 tests in dev, 179 in staging (screenshots/ci-full-run-29.png).
+   The first real night run: #32 on 28 October, "Triggered via schedule", main at the
+   merge commit cd34473 - all 7 jobs green in 9 min 53 s, 180 tests in dev, 179 in
+   staging, 0 failed, 0 flaky (screenshots/ci-nightly-run-32.png, -summary.png).
+   It started at 07:54 UTC, not at 02:00: GitHub may start a scheduled run late when its
+   machines are busy, and says so in its documentation. So "every night" means "once a
+   night, some time after 02:00" - fine for a nightly check, but nothing should wait for
+   it at a fixed hour.
 
 By hand - any suite
    Actions > this workflow > Run workflow, choose the suite. We used it to run regression

@@ -678,8 +678,8 @@ similar)"
 Where:    .github/workflows/week20-middle4-5.yml (GitHub Actions)
 Runs:     smoke on every pull request to main, regression on every push to main, full
           every night at 02:00 UTC, any suite by hand
-Proof:    green runs #10, #12, #13, #17, #20, #22, #25, #29 (links at the end of this
-          part)
+Proof:    green runs #10, #12, #13, #17, #20, #22, #25, #29; after the merge #31 (push to
+          main) and #32 (the first night run) - links at the end of this part
 
 
 Practice task 4. "Set up environment-based configuration (CI vs local)"
@@ -839,7 +839,8 @@ expected vs when it signals a risk"
    ci-strategy.txt - smoke on a pull request, regression on main, full every night, and
    why; ci-improvements.txt - what made the runs faster. Smoke ran on every push to the
    pull request; the full suite ran by hand on the branch (run #29), because night runs
-   start only from main, after the merge.
+   start only from main, after the merge. After the merge: regression on the push to main
+   (run #31) and the full suite on the first night (run #32) - both green.
 
 "Distinguishes between infrastructure, environment, and test failures"
    failure-classification.txt - one real CI case of each kind.
@@ -900,8 +901,13 @@ On the branch week20-middle-stage-5 (pull request #1 to main):
 10. "CI strategy, CI suggestions and the Stage 5 test plan."
    ci-strategy.txt, the CI suggestions, this part of the test plan (with practice tasks
    10-14).   (a2b96a6)
-11. "Full run and Allure trend screenshots."
+11. "Full run and Allure trend screenshots."   (1ba8a86)
    The evidence of the full suite (run #29) and of the Allure trend, before the merge.
+
+Pull request #1 merged into main: cd34473. On main after the merge:
+
+12. "Runs on main: the merge and the first night run."
+   The screenshots of run #31 and run #32, and these lines.
 
 Every commit name starts with "Week 20. Middle Stage 5.".
 
@@ -960,3 +966,19 @@ Run #29 - full by hand on the branch (commit a2b96a6), green, 6 min 38 s
    deviations) in 4 min 31 s - with the 1-minute token test and the browser test;
    full-staging: 179 (no browser test) in 5 min 40 s. 0 failed, 0 flaky, pass rate 100%.
    Screenshots: screenshots/ci-full-run-29.png, ci-full-run-29-summary.png
+
+After the merge (main, commit cd34473):
+
+Run #31 - regression on the push to main (the merge of pull request #1), green, 6 min 2 s
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40480392559
+   Screenshot: screenshots/ci-main-merge-run-31.png
+
+Run #32 - full, the first night run ("Triggered via schedule"), green, 9 min 53 s
+   https://github.com/lkliuchnik/lkluchnik_API_Project/actions/runs/40653147830
+   28 October; all 7 jobs green, 14 artifacts. Summary "Suite: full (event schedule)".
+   full-dev: 180 tests (142 passed + 38 known deviations) in 7 min 19 s; full-staging:
+   179 (141 + 38) in 8 min 39 s. 0 failed, 0 flaky, pass rate 100%. Slower than run #29
+   (4 min 31 s and 5 min 40 s) with the same tests and code - most likely the public
+   servers answered slower that morning (not measured). Planned for 02:00 UTC, started
+   at 07:54 UTC - GitHub may start a scheduled run late (ci-strategy.txt).
+   Screenshots: screenshots/ci-nightly-run-32.png, ci-nightly-run-32-summary.png
